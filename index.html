@@ -9,26 +9,22 @@
   </head>
 
   <body>
-    <!-- Aqua Voice Style Floating Draggable Bubble with Glass Button Spec -->
-    <div class="glass-button-wrap" data-tauri-drag-region>
-      <div class="aqua-bubble glass-button idle" id="capsule" data-tauri-drag-region>
-        <!-- Left dismiss / minimize button -->
-        <button class="bubble-action-btn dismiss-btn" id="dismiss-btn" title="Hide Bubble">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </button>
+    <!-- Aqua Voice Style Floating Draggable Bubble (Solid Color / Clean Minimal) -->
+    <div class="aqua-bubble idle" id="capsule" data-tauri-drag-region>
+      <!-- Left dismiss / minimize button -->
+      <button class="bubble-action-btn dismiss-btn" id="dismiss-btn" title="Hide Bubble">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
 
       <!-- Center Audio / State Region (Draggable) -->
       <div class="bubble-center" data-tauri-drag-region>
-        <!-- Liquid Metal Shader Canvas Background -->
-        <div class="liquid-metal-canvas-wrap" id="liquid-shader-container" data-tauri-drag-region></div>
-
-        <!-- AetherVoice Branding Icon -->
+        <!-- AetherVoice Branding Icon (26px) -->
         <img src="/src/assets/logo.png" class="capsule-logo" id="capsule-logo" alt="AetherVoice" data-tauri-drag-region />
 
-        <!-- Waveform visualizer bars -->
+        <!-- Waveform visualizer bars (Starts flat, dynamically scales with voice) -->
         <div class="waveform" id="waveform" data-tauri-drag-region>
           <div class="bar bar-1"></div>
           <div class="bar bar-2"></div>
@@ -50,10 +46,8 @@
         <div class="stop-icon"></div>
       </button>
 
-        <!-- Hidden settings trigger button -->
-        <button id="settings-btn" style="display: none;"></button>
-      </div>
-      <div class="glass-button-shadow rounded-full" data-tauri-drag-region></div>
+      <!-- Hidden settings trigger button -->
+      <button id="settings-btn" style="display: none;"></button>
     </div>
   </body>
 </html>

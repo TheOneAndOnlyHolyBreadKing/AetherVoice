@@ -1,7 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { ShaderMount, liquidMetalFragmentShader } from "@paper-design/shaders";
 
 const appWindow = getCurrentWindow();
 
@@ -10,13 +9,10 @@ type DictationState = "idle" | "listening" | "transcribing";
 const capsule = document.getElementById("capsule");
 const dismissBtn = document.getElementById("dismiss-btn");
 const stopBtn = document.getElementById("stop-btn");
-const shaderContainer = document.getElementById("liquid-shader-container");
 
 let isRecording = false;
 let audioPollInterval: number | null = null;
 let recordingStartTime: number = 0;
-// biome-ignore lint/suspicious/noExplicitAny: External shader library
-let shaderMountInstance: any = null;
 
 function updateState(state: DictationState, _detail?: string) {
   if (!capsule) return;
@@ -25,13 +21,10 @@ function updateState(state: DictationState, _detail?: string) {
 
   if (state === "listening") {
     capsule.classList.add("listening");
-    shaderMountInstance?.setSpeed?.(1.4);
   } else if (state === "transcribing") {
     capsule.classList.add("transcribing");
-    shaderMountInstance?.setSpeed?.(2.0);
   } else {
     capsule.classList.add("idle");
-    shaderMountInstance?.setSpeed?.(0.5);
   }
 }
 
@@ -255,33 +248,6 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   // Provision model on first launch
   checkAndProvisionModel();
-
-  // Initialize Liquid Metal WebGL Shader Mount
-  if (shaderContainer) {
-    try {
-      shaderMountInstance = new ShaderMount(
-        shaderContainer,
-        liquidMetalFragmentShader,
-        {
-          u_repetition: 4,
-          u_softness: 0.5,
-          u_shiftRed: 0.25,
-          u_shiftBlue: 0.35,
-          u_distortion: 0.1,
-          u_contour: 0.1,
-          u_angle: 45,
-          u_scale: 8,
-          u_shape: 1,
-          u_offsetX: 0.1,
-          u_offsetY: -0.1,
-        },
-        undefined,
-        0.5,
-      );
-    } catch (shaderErr) {
-      console.warn("ShaderMount initialization fallback:", shaderErr);
-    }
-  }
 
   // Dismiss button: minimize or hide the bubble to system tray
   dismissBtn?.addEventListener("click", async (e) => {
