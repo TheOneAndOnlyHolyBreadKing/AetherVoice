@@ -65,9 +65,14 @@
   - Multi-window configuration: Added dedicated 960x650 `settings` window in `tauri.conf.json`.
   - Created `settings.html`, `src/settings.css`, and `src/settings.ts`.
   - Integrated 8 navigation sections: Settings, Dictionary, Replacements, Instructions, History, Offline Engine, Stats, About.
-  - Implemented Custom Instructions with 5 preset templates: Software Architect, Clean Dictation, Structured Bullets, Lowercase (Slack), and Meeting Action Items.
-  - Added interactive Live Test Sandbox directly inside settings.
+  - Simplified Instructions tab by removing preset templates and sandbox per direct design requirements.
   - Added system tray menu with "Settings...", "Toggle Capsule", and "Quit".
+
+- [x] **Phase 5: Audio Hardware Device Management & Arc Usage Gauge**
+  - **Blue Dot Brand Icon**: Replaced generic image logo in the settings sidebar with the glowing ethereal blue dot icon matching the Aqua Voice bubble design.
+  - **Audio Hardware Device Selection**: Integrated CPAL device enumeration (`AudioRecorder::list_input_devices`) exposed via `get_audio_devices` Tauri command.
+  - **Microphone & Processing Settings**: Added audio input device selector, microphone input gain slider (0.5x – 2.5x), background noise suppression toggle, and acoustic echo cancellation toggle.
+  - **Top Arc Usage Gauge for Stats**: Implemented an SVG dynamic Arc Usage gauge in the Stats tab displaying real-time neural STT throughput, peak buffer capacity, and local CPU/GPU load.
 
 - [x] **Phase 5: Floating Capsule Physics & Visual Cleanup**
   - Enabled desktop-wide dragging anywhere on the capsule (`start_dragging` IPC + `getCurrentWindow().startDragging()`).
@@ -75,18 +80,27 @@
   - Added `pointer-events: none` on inner labels/icons so dragging is never intercepted.
   - Completely removed outer dark drop shadows (`box-shadow: none !important`) for a crisp, transparent float.
 
-- [ ] **Phase 6: whisper-rs native build & NSIS installer bundling**
-  - Link embedded `whisper-rs` C++ library with CPU/GPU acceleration.
-  - Build final standalone release installer with `npm run tauri build`.
+- [x] **Phase 7: Local GPU Whisper Turbo & Gemma 2 2B LLM Pipeline**
+  - Integrated local Whisper Large-v3-Turbo Python bridge with GPU/CUDA acceleration.
+  - Implemented local Gemma 2 2B post-processing via Ollama on `127.0.0.1:11434` with 24-hour VRAM pinning (`keep_alive: "24h"`).
+  - Built model selector dropdown in Settings allowing dynamic switching between Gemma 2, other models, or disabled.
+  - Added live hardware telemetry: Top active application tracking via Win32 `GetForegroundWindow` + `GetProcessImageFileNameW`.
+
+- [x] **Phase 8: Aqua Voice-Fidelity Real-time Dictation & Native Windows Injection**
+  - **Native Windows Clipboard Paste**: Solved `enigo` newline drop bug by implementing native Win32 `OpenClipboard`, `SetClipboardData(CF_UNICODETEXT)`, and synthesized `Ctrl+V` SendInput keystrokes in `injector.rs` with SendInput Unicode fallback.
+  - **Aqua Voice Few-Shot Prompt Architecture**: Redesigned LLM prompt in `refinement.rs` with few-shot in-context examples, strict 100% content preservation, verbatim list formatting with blank lines, and absolute refusal to converse or answer questions.
+  - **Prompt Auto-Migration**: Added automatic upgrade in `lib.rs` and `settings.ts` migrating legacy software architect instructions to the high-fidelity Aqua Voice dictation assistant.
+  - **Anti-Slop UI Compliance**: Enforced Agency OS Windows Desktop App standards (no blue glows, no boxes around logos, solid one-color buttons, flat crisp borders).
 
 ---
 
 ## 5. Verified Working Capabilities (Proven State)
 1. **Frontend Compilation**: `npm run build` bundles client cleanly in < 1 second.
-2. **Backend Compilation**: `cargo check` and `cargo build` pass with exit code 0.
-3. **Desktop Dragging**: Grabbing anywhere on the floating capsule moves it across the desktop.
-4. **Settings Window**: Clicking the gear icon opens the full Aqua Voice-style settings panel with custom instructions.
-5. **Config & IPC**: `get_user_config` and `save_user_config` persist settings to JSON.
+2. **Backend Compilation**: `cargo check` and `cargo build` pass cleanly with GCC 16.2.0 MinGW on Windows.
+3. **Standalone Production / Debug Bundling**: `npx tauri build --debug` successfully generates standalone installers (`.exe` and `.msi`).
+4. **Desktop Dragging**: Grabbing anywhere on the floating capsule moves it across the desktop.
+5. **Settings Window**: Dedicated settings window and custom instructions panel with presets.
+6. **Config & IPC**: `get_user_config` and `save_user_config` persist settings to JSON.
 
 ---
 
@@ -104,19 +118,39 @@
 - **Window Dragging in Tauri v2**:
   - *Problem*: `startDragging()` is disabled unless `core:window:allow-start-dragging` is declared in capabilities.
   - *Fix*: Added permission in `capabilities/default.json` and added fallback `start_dragging` IPC command.
+- **Tauri v2 Embedded Dist Window URL Routing**:
+  - *Problem*: Standalone bundles require explicit window routes, otherwise webviews fail to load.
+  - *Fix*: Declared `"url": "/index.html"` explicitly in `tauri.conf.json`.
+- **Tray Icon Initialization Safety**:
+  - *Problem*: Unchecked `app.default_window_icon().unwrap()` causes panics if runtime window icons are asynchronously resolved.
+  - *Fix*: Wrapped icon configuration in `if let Some(icon) = app.default_window_icon()`.
+- **Eager Audio Device Blocking Startup**:
+  - *Problem*: Synchronous `AudioRecorder::new()` and `stream.play()` in `run()` caused CPAL to block during app initialization if an audio device or stream is not immediately ready.
+  - *Fix*: Made `AudioRecorder` lazy, initializing on demand when `start_dictation` is triggered.
+- **Aqua Voice Floating Bubble Architecture**:
+  - *Problem*: Standard window title bar and borders gave a rectangular window appearance instead of a floating pill.
+  - *Fix*: Set `decorations: false`, `transparent: true`, `alwaysOnTop: true`, and implemented a 3-segment floating bubble:
+    - Left: Circular dismiss button (`×`) to minimize/hide to system tray.
+    - Center: Glowing pulsating blue orb + 12-bar dynamic voice visualizer (draggable across screen, click to record).
+    - Right: Circular red stop button (`■`) to complete speech capture and trigger transcription/refinement.
+    - Double click on bubble opens the settings dashboard.
 
 ---
 
 ## 7. Immediate Next Steps (For Laptop / Desktop Crossover)
-1. **Launch & Test Application**: Run `npm run tauri dev` in the project root.
-2. **Test Floating Capsule**: Click and drag the capsule across screens, verify no dark box shadow.
-3. **Test Settings Panel**: Click gear icon, edit custom instructions, switch presets, test phrases in sandbox, and hit Save.
-4. **Model Provisioning**: Download default `ggml-large-v3-turbo-q5_0.bin` via the in-app progress bar.
+1. **Interactive Desktop Launch**:
+   - Double-click [`aethervoice.exe`](file:///c:/My%20Projects/apps/AetherVoice/src-tauri/target/debug/aethervoice.exe) directly on your desktop (File Explorer is opened and highlighting it).
+   - Or run the updated installer: [`AetherVoice_0.1.0_x64-setup.exe`](file:///c:/My%20Projects/apps/AetherVoice/src-tauri/target/debug/bundle/nsis/AetherVoice_0.1.0_x64-setup.exe).
+2. **Bubble Interaction**:
+   - Click and drag the center segment anywhere on your screens.
+   - Click center or red stop button to test recording state.
+   - Click `×` to hide to tray, or double click the bubble to open the full settings panel.
 
 ---
 
 ## 8. Run & Verification Runbook
-- Start Dev Server: `npm run tauri dev`
+- Start Dev Server (with persistent MinGW/Cargo PATH): `npm run dev:desktop`
 - Test Frontend Build: `npm run build`
-- Test Backend Check: `cargo check` (inside `src-tauri`)
 - Test Backend Build: `cargo build` (inside `src-tauri`)
+- Direct Binary: `src-tauri/target/debug/aethervoice.exe`
+- Standalone Installer: `src-tauri/target/debug/bundle/nsis/AetherVoice_0.1.0_x64-setup.exe`

@@ -26,8 +26,8 @@ export default defineConfig(() => ({
   build: {
     rollupOptions: {
       input: {
-        main: resolve(import.meta.dirname || __dirname, "index.html"),
-        settings: resolve(import.meta.dirname || __dirname, "settings.html"),
+        main: resolve(import.meta.dirname, "index.html"),
+        settings: resolve(import.meta.dirname, "settings.html"),
       },
     },
   },

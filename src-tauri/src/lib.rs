@@ -7,7 +7,7 @@ pub mod whisper;
 use audio::AudioRecorder;
 use downloader::{download_model, get_models_dir, is_model_installed, DEFAULT_MODEL_FILENAME, DEFAULT_MODEL_URL};
 use injector::inject_text;
-use refinement::{refine_text, refine_text_with_config, AppConfig};
+use refinement::{refine_text, refine_with_llm, AppConfig};
 use std::sync::{Arc, Mutex, RwLock};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
@@ -36,7 +36,11 @@ fn get_user_config(state: State<'_, AppState>, app: AppHandle) -> Result<AppConf
     let path = get_config_path(&app)?;
     if path.exists() {
         if let Ok(data) = std::fs::read_to_string(&path) {
-            if let Ok(loaded) = serde_json::from_str::<AppConfig>(&data) {
+            if let Ok(mut loaded) = serde_json::from_str::<AppConfig>(&data) {
+                if loaded.custom_instructions.contains("software architect") {
+                    loaded.custom_instructions = AppConfig::default().custom_instructions;
+                    let _ = std::fs::write(&path, serde_json::to_string_pretty(&loaded).unwrap_or_default());
+                }
                 let mut lock = state.config.write().map_err(|e| e.to_string())?;
                 *lock = loaded.clone();
                 return Ok(loaded);
@@ -56,6 +60,18 @@ fn save_user_config(
     let path = get_config_path(&app)?;
     let serialized = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
     std::fs::write(&path, serialized).map_err(|e| e.to_string())?;
+
+    let device_changed = {
+        let lock = state.config.read().map_err(|e| e.to_string())?;
+        lock.audio_device != config.audio_device
+    };
+
+    if device_changed {
+        if let Ok(mut rec_lock) = state.recorder.lock() {
+            *rec_lock = None;
+        }
+    }
+
     let mut lock = state.config.write().map_err(|e| e.to_string())?;
     *lock = config;
     Ok(())
@@ -115,8 +131,23 @@ async fn ensure_model(app: AppHandle) -> Result<String, String> {
 }
 
 #[tauri::command]
+fn get_audio_devices() -> Vec<String> {
+    AudioRecorder::list_input_devices()
+}
+
+#[tauri::command]
 fn start_dictation(state: State<'_, AppState>, app: AppHandle) -> Result<(), String> {
-    let recorder_lock = state.recorder.lock().map_err(|e| e.to_string())?;
+    let mut recorder_lock = state.recorder.lock().map_err(|e| e.to_string())?;
+    if recorder_lock.is_none() {
+        let device_name = {
+            let conf = state.config.read().map_err(|e| e.to_string())?;
+            conf.audio_device.clone()
+        };
+        match AudioRecorder::with_device(Some(&device_name)) {
+            Ok(rec) => *recorder_lock = Some(rec),
+            Err(e) => eprintln!("[AetherVoice] AudioRecorder init warning: {}", e),
+        }
+    }
     if let Some(recorder) = recorder_lock.as_ref() {
         recorder.start_recording();
         let _ = app.emit("dictation-state", "listening");
@@ -126,10 +157,12 @@ fn start_dictation(state: State<'_, AppState>, app: AppHandle) -> Result<(), Str
 
 #[tauri::command]
 async fn stop_dictation(state: State<'_, AppState>, app: AppHandle) -> Result<String, String> {
-    let samples = {
+    let (samples, _gain) = {
+        let conf = state.config.read().map_err(|e| e.to_string())?;
+        let g = conf.mic_gain;
         let recorder_lock = state.recorder.lock().map_err(|e| e.to_string())?;
         if let Some(recorder) = recorder_lock.as_ref() {
-            recorder.stop_recording()
+            (recorder.stop_recording(g), g)
         } else {
             return Err("Audio recorder not initialized".to_string());
         }
@@ -139,7 +172,10 @@ async fn stop_dictation(state: State<'_, AppState>, app: AppHandle) -> Result<St
 
     let whisper_arc = Arc::clone(&state.whisper);
     let raw_text = {
-        let whisper_guard = whisper_arc.lock().await;
+        let mut whisper_guard = whisper_arc.lock().await;
+        if whisper_guard.is_none() {
+            *whisper_guard = Some(WhisperEngine::new("turbo"));
+        }
         if let Some(whisper) = whisper_guard.as_ref() {
             whisper.transcribe(samples).await?
         } else {
@@ -152,10 +188,12 @@ async fn stop_dictation(state: State<'_, AppState>, app: AppHandle) -> Result<St
         lock.clone()
     };
 
-    let cleaned_text = refine_text_with_config(&raw_text, &config);
+    let cleaned_text = refine_with_llm(&raw_text, &config).await;
 
     if !cleaned_text.is_empty() {
-        let _ = inject_text(&cleaned_text);
+        if let Err(e) = inject_text(&cleaned_text) {
+            eprintln!("[AetherVoice] Text injection failed: {}", e);
+        }
     }
 
     let _ = app.emit("dictation-state", "idle");
@@ -186,13 +224,141 @@ fn toggle_capsule_visibility(app: AppHandle) -> Result<bool, String> {
     }
 }
 
+#[tauri::command]
+fn get_audio_level(state: State<'_, AppState>) -> f32 {
+    if let Ok(rec_lock) = state.recorder.lock() {
+        if let Some(recorder) = rec_lock.as_ref() {
+            return recorder.get_current_level();
+        }
+    }
+    0.0
+}
+
+#[tauri::command]
+fn get_active_app() -> String {
+    #[cfg(windows)]
+    unsafe {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowTextW};
+        use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+        use windows_sys::Win32::System::ProcessStatus::GetProcessImageFileNameW;
+
+        let hwnd = GetForegroundWindow();
+        if hwnd.is_null() {
+            return "Desktop".to_string();
+        }
+
+        // Try getting window title
+        let mut title_buf = [0u16; 512];
+        let len = GetWindowTextW(hwnd, title_buf.as_mut_ptr(), 512);
+        let title = if len > 0 {
+            String::from_utf16_lossy(&title_buf[..len as usize])
+        } else {
+            String::new()
+        };
+
+        // Try getting process executable name
+        let mut process_id = 0u32;
+        windows_sys::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId(hwnd, &mut process_id);
+        if process_id > 0 {
+            let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, process_id);
+            if !handle.is_null() {
+                let mut img_buf = [0u16; 512];
+                let img_len = GetProcessImageFileNameW(handle, img_buf.as_mut_ptr(), 512);
+                windows_sys::Win32::Foundation::CloseHandle(handle);
+                if img_len > 0 {
+                    let full_path = String::from_utf16_lossy(&img_buf[..img_len as usize]);
+                    if let Some(filename) = full_path.split('\\').last() {
+                        let lower = filename.to_lowercase();
+                        if lower.contains("code") { return "VS Code".to_string(); }
+                        if lower.contains("chrome") { return "Google Chrome".to_string(); }
+                        if lower.contains("msedge") { return "Microsoft Edge".to_string(); }
+                        if lower.contains("firefox") { return "Mozilla Firefox".to_string(); }
+                        if lower.contains("slack") { return "Slack".to_string(); }
+                        if lower.contains("discord") { return "Discord".to_string(); }
+                        if lower.contains("notepad") { return "Notepad".to_string(); }
+                        if lower.contains("cursor") { return "Cursor".to_string(); }
+                        if lower.contains("windsurf") { return "Windsurf".to_string(); }
+                        if lower.contains("antigravity") { return "Antigravity IDE".to_string(); }
+                        if lower.contains("word") { return "Microsoft Word".to_string(); }
+                        if lower.contains("teams") { return "Microsoft Teams".to_string(); }
+                        if lower.contains("obsidian") { return "Obsidian".to_string(); }
+                        return filename.replace(".exe", "");
+                    }
+                }
+            }
+        }
+
+        if !title.is_empty() {
+            let title_lower = title.to_lowercase();
+            if title_lower.contains("chrome") { return "Google Chrome".to_string(); }
+            if title_lower.contains("edge") { return "Microsoft Edge".to_string(); }
+            if title_lower.contains("visual studio code") || title_lower.contains("code") { return "VS Code".to_string(); }
+            if title_lower.contains("slack") { return "Slack".to_string(); }
+            if title_lower.contains("discord") { return "Discord".to_string(); }
+            return title;
+        }
+    }
+    "Desktop".to_string()
+}
+
+#[cfg(windows)]
+fn spawn_global_hotkey_listener(app: AppHandle) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+        GetAsyncKeyState, VK_CONTROL, VK_F8, VK_LMENU, VK_RMENU, VK_SPACE,
+    };
+
+    static IS_KEY_DOWN: AtomicBool = AtomicBool::new(false);
+
+    std::thread::spawn(move || {
+        loop {
+            std::thread::sleep(std::time::Duration::from_millis(15));
+
+            let (hotkey, mode) = {
+                if let Some(state) = app.try_state::<AppState>() {
+                    if let Ok(conf) = state.config.read() {
+                        (conf.hotkey.clone(), conf.activation_mode.clone())
+                    } else {
+                        ("AltRight".to_string(), "push-to-talk".to_string())
+                    }
+                } else {
+                    ("AltRight".to_string(), "push-to-talk".to_string())
+                }
+            };
+
+            let pressed = unsafe {
+                match hotkey.as_str() {
+                    "AltRight" => (GetAsyncKeyState(VK_RMENU as i32) as u16 & 0x8000) != 0,
+                    "AltLeft" => (GetAsyncKeyState(VK_LMENU as i32) as u16 & 0x8000) != 0,
+                    "F8" => (GetAsyncKeyState(VK_F8 as i32) as u16 & 0x8000) != 0,
+                    "Ctrl+Space" => {
+                        let ctrl = (GetAsyncKeyState(VK_CONTROL as i32) as u16 & 0x8000) != 0;
+                        let space = (GetAsyncKeyState(VK_SPACE as i32) as u16 & 0x8000) != 0;
+                        ctrl && space
+                    }
+                    _ => (GetAsyncKeyState(VK_RMENU as i32) as u16 & 0x8000) != 0,
+                }
+            };
+
+            let was_down = IS_KEY_DOWN.load(Ordering::Relaxed);
+
+            if pressed && !was_down {
+                IS_KEY_DOWN.store(true, Ordering::Relaxed);
+                let _ = app.emit("global-hotkey-event", serde_json::json!({ "action": "press", "mode": mode }));
+            } else if !pressed && was_down {
+                IS_KEY_DOWN.store(false, Ordering::Relaxed);
+                let _ = app.emit("global-hotkey-event", serde_json::json!({ "action": "release", "mode": mode }));
+            }
+        }
+    });
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let recorder_instance = AudioRecorder::new().ok();
-
+    println!("[AetherVoice] Initializing AppState...");
     let state = AppState {
-        recorder: Arc::new(Mutex::new(recorder_instance)),
-        whisper: Arc::new(tokio::sync::Mutex::new(None)),
+        recorder: Arc::new(Mutex::new(None)),
+        whisper: Arc::new(tokio::sync::Mutex::new(Some(WhisperEngine::new("turbo")))),
         config: Arc::new(RwLock::new(AppConfig::default())),
     };
 
@@ -209,16 +375,43 @@ pub fn run() {
             open_settings_window,
             get_user_config,
             save_user_config,
-            start_dragging
+            get_audio_devices,
+            start_dragging,
+            get_audio_level,
+            get_active_app
         ])
         .setup(|app| {
+            let handle = app.handle().clone();
+
+            // Load saved user config from disk on startup
+            if let Ok(config_path) = get_config_path(&handle) {
+                if config_path.exists() {
+                    if let Ok(data) = std::fs::read_to_string(&config_path) {
+                        if let Ok(mut loaded) = serde_json::from_str::<AppConfig>(&data) {
+                            if loaded.custom_instructions.contains("software architect") {
+                                loaded.custom_instructions = AppConfig::default().custom_instructions;
+                                let _ = std::fs::write(&config_path, serde_json::to_string_pretty(&loaded).unwrap_or_default());
+                            }
+                            if let Some(state) = handle.try_state::<AppState>() {
+                                if let Ok(mut lock) = state.config.write() {
+                                    *lock = loaded;
+                                    println!("[AetherVoice] Loaded saved user configuration.");
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            #[cfg(windows)]
+            spawn_global_hotkey_listener(handle);
+
             let settings_i = MenuItem::with_id(app, "settings", "Settings...", true, None::<&str>)?;
             let toggle_i = MenuItem::with_id(app, "toggle", "Toggle Capsule", true, None::<&str>)?;
             let quit_i = MenuItem::with_id(app, "quit", "Quit AetherVoice", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&settings_i, &toggle_i, &quit_i])?;
 
-            let _tray = TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
+            let mut tray_builder = TrayIconBuilder::new()
                 .tooltip("AetherVoice - Local Dictation")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
@@ -241,12 +434,25 @@ pub fn run() {
                             let _ = toggle_capsule_visibility(app.clone());
                         }
                     }
-                })
-                .build(app)?;
+                });
 
+            if let Some(icon) = app.default_window_icon() {
+                tray_builder = tray_builder.icon(icon.clone());
+            }
+
+            let _tray = tray_builder.build(app)?;
+
+            if let Some(main_win) = app.get_webview_window("main") {
+                println!("[AetherVoice] Showing floating bubble...");
+                let _ = main_win.show();
+                let _ = main_win.set_focus();
+            } else {
+                eprintln!("[AetherVoice] ERROR: Main window not found during setup!");
+            }
+
+            println!("[AetherVoice] Setup completed successfully.");
             Ok(())
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
-

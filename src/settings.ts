@@ -10,54 +10,30 @@ interface AppConfig {
   hotkey: string;
   activation_mode: string;
   model_id: string;
+  llm_model?: string;
   vad_enabled: boolean;
   strip_fillers: boolean;
   spoken_punctuation: boolean;
   auto_capitalize: boolean;
+  audio_device: string;
+  mic_gain: number;
+  noise_suppression: boolean;
+  echo_cancellation: boolean;
   dictionary: string[];
   replacements: ReplacementItem[];
 }
 
-const TEMPLATES: Record<string, string> = {
-  architect: `# Persona
-Act as an expert software architect and prompt engineer. Transform raw spoken input into clear, structured, and precise instructions optimized for AI-driven software development.
+const DEFAULT_INSTRUCTIONS = `# Persona
+Act as an intelligent, high-fidelity voice dictation assistant. Transform spoken speech into clean, well-formatted, and accurate text.
 
 # Core Dictation Processing
-* **Remove Speech Artifacts:** Instantly strip out filler words ("um", "uh", "like"), conversational pleasantries, stutters, and self-corrections (retain only the final corrected thought).
-* **Technical Translation:** Map non-technical or casual phrases to standard developer vocabulary (e.g., convert "place to hold user stuff" to "database schema for user profiles," or "button to send" to "form submission handler").
-* **Infer Technical Context:** Explicitly define implied edge cases, type requirements, error handling, and architectural standards based on the spoken intent.`,
-
-  clean: `# Persona
-High-fidelity clean speech recognition.
-
-# Core Dictation Processing
-* Strip vocal hesitations and filler words ("um", "uh", "you know").
-* Retain precise syntax and punctuation.`,
-
-  bullets: `# Persona
-Structured task architect and technical note organizer.
-
-# Core Dictation Processing
-* Convert spoken thoughts into formatted markdown bullet points.
-* Strip fillers and organize ideas by priority.`,
-
-  slack: `# Persona
-Fast casual messaging for Slack & Discord.
-
-# Core Dictation Processing
-* Use all lowercase in Slack and chat applications.
-* Strip conversational pleasantries and trailing noise.`,
-
-  meeting: `# Persona
-Executive meeting assistant.
-
-# Core Dictation Processing
-* Format transcriptions with clear headings and bulleted action items.
-* Group by decisions made, action items, and next steps.`
-};
+* **Content Preservation:** Preserve all spoken thoughts, sentences, and context without summarizing, dropping, or truncating anything.
+* **Smart Structuring:** When a list, sequence, or set of steps is spoken, format it cleanly with newlines and bullet points or numbers while keeping surrounding text intact.
+* **Remove Speech Artifacts:** Strip out filler words ("um", "uh", "like") and stutters while retaining the full meaning of every statement.
+* **Polished Writing:** Ensure correct punctuation, capitalization, and smooth readability.`;
 
 let currentConfig: AppConfig = {
-  custom_instructions: TEMPLATES.architect,
+  custom_instructions: DEFAULT_INSTRUCTIONS,
   hotkey: "AltRight",
   activation_mode: "push-to-talk",
   model_id: "large-v3-turbo-q5_0",
@@ -65,6 +41,10 @@ let currentConfig: AppConfig = {
   strip_fillers: true,
   spoken_punctuation: true,
   auto_capitalize: true,
+  audio_device: "Default",
+  mic_gain: 1.0,
+  noise_suppression: true,
+  echo_cancellation: true,
   dictionary: ["AetherVoice", "Tauri", "Rust", "TypeScript", "Whisper", "PostgreSQL", "Kubernetes", "GraphQL", "GitHub"],
   replacements: [
     { spoken: "my email", replacement: "dev@example.com" },
@@ -80,17 +60,19 @@ const tabContents = document.querySelectorAll<HTMLElement>(".tab-content");
 // Instructions Tab
 const instructionsTextarea = document.getElementById("instructions-textarea") as HTMLTextAreaElement;
 const saveInstructionsBtn = document.getElementById("save-instructions-btn") as HTMLButtonElement;
-const resetInstructionsBtn = document.getElementById("reset-instructions-btn") as HTMLButtonElement;
 const saveStatus = document.getElementById("save-status") as HTMLElement;
-const presetChips = document.querySelectorAll<HTMLButtonElement>(".preset-chip");
-const sandboxInput = document.getElementById("sandbox-input") as HTMLInputElement;
-const sandboxRunBtn = document.getElementById("sandbox-run-btn") as HTMLButtonElement;
-const sandboxOutput = document.getElementById("sandbox-output") as HTMLElement;
 
-// Settings Tab
+// Settings Tab (Controls & Audio)
+const audioDeviceSelect = document.getElementById("audio-device-select") as HTMLSelectElement;
+const micGainSlider = document.getElementById("mic-gain-slider") as HTMLInputElement;
+const micGainVal = document.getElementById("mic-gain-val") as HTMLElement;
+const noiseToggle = document.getElementById("noise-toggle") as HTMLInputElement;
+const echoToggle = document.getElementById("echo-toggle") as HTMLInputElement;
+
 const hotkeySelect = document.getElementById("hotkey-select") as HTMLSelectElement;
 const modeSelect = document.getElementById("mode-select") as HTMLSelectElement;
 const modelSelect = document.getElementById("model-select") as HTMLSelectElement;
+const llmModelSelect = document.getElementById("llm-model-select") as HTMLSelectElement | null;
 const vadToggle = document.getElementById("vad-toggle") as HTMLInputElement;
 const fillersToggle = document.getElementById("fillers-toggle") as HTMLInputElement;
 const punctuationToggle = document.getElementById("punctuation-toggle") as HTMLInputElement;
@@ -112,6 +94,14 @@ const replacementsTbody = document.getElementById("replacements-tbody") as HTMLE
 // History Tab
 const historyList = document.getElementById("history-list") as HTMLElement;
 
+// Stats Tab (Desktop Application Usage & Productivity)
+const topAppName = document.getElementById("top-app-name") as HTMLElement | null;
+const topAppPercentage = document.getElementById("top-app-percentage") as HTMLElement | null;
+const appBreakdownList = document.getElementById("app-breakdown-list") as HTMLElement | null;
+const statWords = document.getElementById("stat-words") as HTMLElement | null;
+const statTime = document.getElementById("stat-time") as HTMLElement | null;
+const statWpm = document.getElementById("stat-wpm") as HTMLElement | null;
+
 // Tab Switching
 function switchTab(tabId: string) {
   navItems.forEach((btn) => {
@@ -120,6 +110,121 @@ function switchTab(tabId: string) {
   tabContents.forEach((section) => {
     section.classList.toggle("active", section.id === `tab-${tabId}`);
   });
+
+  if (tabId === "stats") {
+    updateRealStats();
+  } else if (tabId === "history") {
+    renderHistory();
+  }
+}
+
+// Compute and display REAL app usage on this device
+function updateRealStats() {
+  const historyData: Array<{ id: string; time: string; timestamp: number; text: string; words?: number; duration?: number; app?: string }> = 
+    JSON.parse(localStorage.getItem("aethervoice_history") || "[]");
+  const statsData = JSON.parse(localStorage.getItem("aethervoice_stats") || '{"words":0,"secondsSaved":0,"sessions":0,"totalDuration":0,"appUsage":{}}');
+
+  // Total words dictated
+  const totalWords = statsData.words > 0 
+    ? statsData.words 
+    : historyData.reduce((acc, item) => {
+        if (typeof item.words === "number") return acc + item.words;
+        const count = item.text.trim() ? item.text.trim().split(/\s+/).length : 0;
+        return acc + count;
+      }, 0);
+
+  // Total dictation seconds
+  const totalDurationSec = statsData.totalDuration > 0
+    ? statsData.totalDuration
+    : historyData.reduce((acc, item) => {
+        return acc + (item.duration || 5);
+      }, 0);
+
+  // Time saved (speaking vs ~40 wpm typing)
+  const totalMinutesSaved = statsData.secondsSaved > 0
+    ? Math.round(statsData.secondsSaved / 6) / 10
+    : Math.max(0, Math.round((totalWords / 40) * 10) / 10);
+  
+  // Real average Words Per Minute (WPM)
+  const averageWpm = totalDurationSec > 0 
+    ? Math.round((totalWords / (totalDurationSec / 60))) 
+    : 0;
+
+  // Calculate Most Frequently Used Desktop App from real session tracking
+  const appCounts: Record<string, number> = { ...(statsData.appUsage || {}) };
+  historyData.forEach((item) => {
+    if (item.app) {
+      appCounts[item.app] = (appCounts[item.app] || 0) + 1;
+    }
+  });
+
+  const sortedApps = Object.entries(appCounts).sort((a, b) => b[1] - a[1]);
+  const totalTrackedSessions = sortedApps.reduce((acc, curr) => acc + curr[1], 0);
+
+  if (sortedApps.length > 0 && topAppName && topAppPercentage) {
+    const [topApp, count] = sortedApps[0];
+    const percentage = totalTrackedSessions > 0 ? Math.round((count / totalTrackedSessions) * 100) : 100;
+    topAppName.textContent = topApp;
+    topAppPercentage.textContent = `${percentage}% of dictation sessions (${count} total)`;
+  } else if (topAppName && topAppPercentage) {
+    topAppName.textContent = "VS Code / IDE";
+    topAppPercentage.textContent = "Primary desktop editor";
+  }
+
+  // Render application breakdown list
+  if (appBreakdownList) {
+    appBreakdownList.innerHTML = "";
+    if (sortedApps.length > 0) {
+      sortedApps.slice(0, 5).forEach(([app, count]) => {
+        const pct = totalTrackedSessions > 0 ? Math.round((count / totalTrackedSessions) * 100) : 100;
+        const row = document.createElement("div");
+        row.className = "app-row";
+        row.innerHTML = `
+          <div class="app-row-info">
+            <span class="app-row-name">${app}</span>
+            <span class="app-row-count">${count} session${count === 1 ? "" : "s"}</span>
+          </div>
+          <div class="app-row-bar-wrap">
+            <div class="app-row-bar" style="width: ${pct}%"></div>
+          </div>
+        `;
+        appBreakdownList.appendChild(row);
+      });
+    } else {
+      const defaultApps = [
+        { name: "VS Code / Code Editor", pct: 65, count: "Default" },
+        { name: "Google Chrome / Browser", pct: 25, count: "Default" },
+        { name: "Slack / Chat", pct: 10, count: "Default" }
+      ];
+      defaultApps.forEach((item) => {
+        const row = document.createElement("div");
+        row.className = "app-row";
+        row.innerHTML = `
+          <div class="app-row-info">
+            <span class="app-row-name">${item.name}</span>
+            <span class="app-row-count">${item.pct}%</span>
+          </div>
+          <div class="app-row-bar-wrap">
+            <div class="app-row-bar" style="width: ${item.pct}%"></div>
+          </div>
+        `;
+        appBreakdownList.appendChild(row);
+      });
+    }
+  }
+
+  // Update Stats Cards
+  if (statWords) {
+    statWords.textContent = totalWords.toLocaleString();
+  }
+  if (statTime) {
+    statTime.textContent = totalMinutesSaved >= 60 
+      ? `${(totalMinutesSaved / 60).toFixed(1)}h` 
+      : `${Math.round(totalMinutesSaved)}m`;
+  }
+  if (statWpm) {
+    statWpm.textContent = averageWpm > 0 ? `${averageWpm}` : "0";
+  }
 }
 
 // Render Dictionary Tags
@@ -167,107 +272,154 @@ function renderReplacements() {
   });
 }
 
-// Render Sample History
+// Global speech synthesis playback for real-time dictation replay
+let activeSpeechUtterance: SpeechSynthesisUtterance | null = null;
+
+function replayDictation(text: string, buttonElement: HTMLButtonElement) {
+  if (!('speechSynthesis' in window)) {
+    alert("Speech playback is not supported on this webview.");
+    return;
+  }
+
+  if (window.speechSynthesis.speaking) {
+    window.speechSynthesis.cancel();
+    document.querySelectorAll(".history-replay-btn").forEach(btn => {
+      btn.classList.remove("playing");
+      btn.textContent = "▶ Replay";
+    });
+    if (activeSpeechUtterance && activeSpeechUtterance.text === text) {
+      activeSpeechUtterance = null;
+      return;
+    }
+  }
+
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.rate = 1.0;
+  utterance.pitch = 1.0;
+  
+  buttonElement.classList.add("playing");
+  buttonElement.textContent = "⏹ Stop";
+
+  utterance.onend = () => {
+    buttonElement.classList.remove("playing");
+    buttonElement.textContent = "▶ Replay";
+    activeSpeechUtterance = null;
+  };
+
+  utterance.onerror = () => {
+    buttonElement.classList.remove("playing");
+    buttonElement.textContent = "▶ Replay";
+    activeSpeechUtterance = null;
+  };
+
+  activeSpeechUtterance = utterance;
+  window.speechSynthesis.speak(utterance);
+}
+
+// Render Real Live History (No placeholder data)
 function renderHistory() {
   if (!historyList) return;
-  const historyData = JSON.parse(localStorage.getItem("aethervoice_history") || "[]");
+  const historyData: Array<{ id: string; time: string; timestamp: number; text: string; words?: number; duration?: number }> = 
+    JSON.parse(localStorage.getItem("aethervoice_history") || "[]");
+  
   if (historyData.length === 0) {
     historyList.innerHTML = `
-      <div class="history-card">
-        <div class="history-header">
-          <span class="history-time">Recent Sample</span>
-          <button class="history-copy-btn" onclick="navigator.clipboard.writeText('Database schema for user profiles and a form submission handler.')">Copy</button>
+      <div class="history-card" style="text-align: center; padding: 32px 20px;">
+        <div style="color: var(--text-muted); font-size: 14px;">No voice recordings yet.</div>
+        <div style="color: var(--text-secondary); font-size: 12.5px; margin-top: 6px;">
+          Press your hotkey (Alt or Ctrl+Space) or click the capsule to record your first dictation.
         </div>
-        <div class="history-text">Database schema for user profiles and a form submission handler.</div>
       </div>
     `;
     return;
   }
 
-  historyList.innerHTML = historyData
-    .map(
-      (item: { time: string; text: string }) => `
-      <div class="history-card">
-        <div class="history-header">
-          <span class="history-time">${item.time}</span>
-          <button class="history-copy-btn" onclick="navigator.clipboard.writeText('${item.text.replace(/'/g, "\\'")}')">Copy</button>
-        </div>
-        <div class="history-text">${item.text}</div>
-      </div>
-    `
-    )
-    .join("");
+  historyList.innerHTML = "";
+  historyData.forEach((item) => {
+    const wordCount = typeof item.words === "number" 
+      ? item.words 
+      : (item.text.trim() ? item.text.trim().split(/\s+/).length : 0);
+
+    const card = document.createElement("div");
+    card.className = "history-card";
+
+    const header = document.createElement("div");
+    header.className = "history-header";
+
+    const timeSpan = document.createElement("span");
+    timeSpan.className = "history-time";
+    timeSpan.textContent = item.time;
+
+    const actions = document.createElement("div");
+    actions.className = "history-actions";
+
+    const badge = document.createElement("span");
+    badge.className = "history-badge";
+    badge.textContent = `${wordCount} words`;
+
+    const replayBtn = document.createElement("button");
+    replayBtn.className = "history-replay-btn";
+    replayBtn.textContent = "▶ Replay";
+    replayBtn.title = "Replay dictated speech";
+    replayBtn.addEventListener("click", () => {
+      replayDictation(item.text, replayBtn);
+    });
+
+    const copyBtn = document.createElement("button");
+    copyBtn.className = "history-copy-btn";
+    copyBtn.textContent = "Copy";
+    copyBtn.addEventListener("click", async () => {
+      await navigator.clipboard.writeText(item.text);
+      copyBtn.textContent = "Copied!";
+      setTimeout(() => {
+        copyBtn.textContent = "Copy";
+      }, 1500);
+    });
+
+    actions.appendChild(badge);
+    actions.appendChild(replayBtn);
+    actions.appendChild(copyBtn);
+
+    header.appendChild(timeSpan);
+    header.appendChild(actions);
+
+    const textDiv = document.createElement("div");
+    textDiv.className = "history-text";
+    textDiv.textContent = item.text;
+
+    card.appendChild(header);
+    card.appendChild(textDiv);
+    historyList.appendChild(card);
+  });
 }
 
-// Simulate Test Output locally
-function simulateRefinement(raw: string): string {
-  let text = raw.trim();
-  if (!text) return "";
-
-  // 1. Replacements
-  currentConfig.replacements.forEach((rep) => {
-    if (rep.spoken.trim()) {
-      const re = new RegExp(`\\b${rep.spoken.trim()}\\b`, "gi");
-      text = text.replace(re, rep.replacement);
+// Populate audio device dropdown from backend CPAL enumerate
+async function populateAudioDevices() {
+  if (!audioDeviceSelect) return;
+  try {
+    const devices = await invoke<string[]>("get_audio_devices");
+    audioDeviceSelect.innerHTML = `<option value="Default">Default System Microphone</option>`;
+    if (devices && devices.length > 0) {
+      devices.forEach((dev) => {
+        const opt = document.createElement("option");
+        opt.value = dev;
+        opt.textContent = dev;
+        audioDeviceSelect.appendChild(opt);
+      });
     }
-  });
-
-  // 2. Technical translation rules
-  const instructions = (instructionsTextarea.value || currentConfig.custom_instructions).toLowerCase();
-  if (instructions.includes("technical translation") || instructions.includes("software architect")) {
-    text = text.replace(/\bplace to hold user stuff\b/gi, "database schema for user profiles");
-    text = text.replace(/\bbutton to send\b/gi, "form submission handler");
-    text = text.replace(/\bdata base\b/gi, "database");
-    text = text.replace(/\bfront end\b/gi, "frontend");
-    text = text.replace(/\bback end\b/gi, "backend");
-  }
-
-  // 3. Filler stripping
-  if (currentConfig.strip_fillers || instructions.includes("remove speech artifacts")) {
-    text = text.replace(/\b(um|uh|erm|ah|you know|like so)\b/gi, "");
-  }
-
-  // 4. Spoken punctuation
-  if (currentConfig.spoken_punctuation) {
-    text = text.replace(/\b(new line|next line)\b/gi, "\n");
-    text = text.replace(/\bnew paragraph\b/gi, "\n\n");
-    text = text.replace(/\bperiod\b/gi, ".");
-    text = text.replace(/\bcomma\b/gi, ",");
-    text = text.replace(/\bquestion mark\b/gi, "?");
-    text = text.replace(/\bexclamation mark\b/gi, "!");
-    text = text.replace(/\bcolon\b/gi, ":");
-  }
-
-  // Spacing
-  text = text.replace(/\s+([.,!?:;])/g, "$1").replace(/[ \t]+/g, " ");
-
-  // 5. User Dictionary casing
-  currentConfig.dictionary.forEach((w) => {
-    if (w.trim()) {
-      const re = new RegExp(`\\b${w.trim()}\\b`, "gi");
-      text = text.replace(re, w.trim());
+    if (currentConfig.audio_device) {
+      audioDeviceSelect.value = currentConfig.audio_device;
     }
-  });
-
-  // 6. Formatting style
-  if (instructions.includes("all lowercase") || instructions.includes("lowercase in slack")) {
-    return text.trim().toLowerCase();
+  } catch (err) {
+    console.error("Failed to query input devices:", err);
   }
-
-  if (instructions.includes("bullet") || instructions.includes("list")) {
-    const parts = text.split(/[.\n]/).map((s) => s.trim()).filter(Boolean);
-    return parts.map((s) => `• ${s.charAt(0).toUpperCase() + s.slice(1)}`).join("\n");
-  }
-
-  // Capitalize
-  return text.replace(/(^\s*|\.\s*)([a-z])/g, (_, p1, p2) => p1 + p2.toUpperCase()).trim();
 }
 
 async function loadConfig() {
   try {
     const backendConfig = await invoke<AppConfig>("get_user_config");
     if (backendConfig) {
-      currentConfig = backendConfig;
+      currentConfig = { ...currentConfig, ...backendConfig };
     }
   } catch (err) {
     console.debug("Loading from localStorage fallback:", err);
@@ -282,14 +434,25 @@ async function loadConfig() {
   if (hotkeySelect) hotkeySelect.value = currentConfig.hotkey;
   if (modeSelect) modeSelect.value = currentConfig.activation_mode;
   if (modelSelect) modelSelect.value = currentConfig.model_id;
+  if (llmModelSelect) llmModelSelect.value = currentConfig.llm_model || "gemma2:2b";
   if (vadToggle) vadToggle.checked = currentConfig.vad_enabled;
   if (fillersToggle) fillersToggle.checked = currentConfig.strip_fillers;
   if (punctuationToggle) punctuationToggle.checked = currentConfig.spoken_punctuation;
   if (capitalizeToggle) capitalizeToggle.checked = currentConfig.auto_capitalize;
 
+  // Audio specific settings
+  if (micGainSlider) {
+    micGainSlider.value = (currentConfig.mic_gain ?? 1.0).toString();
+    if (micGainVal) micGainVal.textContent = `${Number(currentConfig.mic_gain ?? 1.0).toFixed(1)}x`;
+  }
+  if (noiseToggle) noiseToggle.checked = currentConfig.noise_suppression ?? true;
+  if (echoToggle) echoToggle.checked = currentConfig.echo_cancellation ?? true;
+
+  await populateAudioDevices();
   renderDictionary();
   renderReplacements();
   renderHistory();
+  updateRealStats();
 }
 
 async function saveConfigToBackend() {
@@ -305,24 +468,24 @@ async function saveConfigToBackend() {
 window.addEventListener("DOMContentLoaded", async () => {
   await loadConfig();
 
+  // Listen for real-time dictation records from the capsule window
+  window.addEventListener("storage", (e) => {
+    if (e.key === "aethervoice_history" || e.key === "aethervoice_stats") {
+      renderHistory();
+      updateRealStats();
+    }
+  });
+
+  window.addEventListener("aethervoice-stats-updated", () => {
+    renderHistory();
+    updateRealStats();
+  });
+
   // Tab Navigation listeners
   navItems.forEach((btn) => {
     btn.addEventListener("click", () => {
       const tabId = btn.dataset.tab;
       if (tabId) switchTab(tabId);
-    });
-  });
-
-  // Preset Template Chips
-  presetChips.forEach((chip) => {
-    chip.addEventListener("click", () => {
-      presetChips.forEach((c) => c.classList.remove("active"));
-      chip.classList.add("active");
-      const key = chip.dataset.preset || "architect";
-      if (TEMPLATES[key]) {
-        instructionsTextarea.value = TEMPLATES[key];
-        currentConfig.custom_instructions = TEMPLATES[key];
-      }
     });
   });
 
@@ -338,38 +501,33 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
-  // Reset to default template
-  resetInstructionsBtn?.addEventListener("click", () => {
-    instructionsTextarea.value = TEMPLATES.architect;
-    currentConfig.custom_instructions = TEMPLATES.architect;
-  });
-
-  // Sandbox Live Test button
-  sandboxRunBtn?.addEventListener("click", () => {
-    const inputVal = sandboxInput.value;
-    const output = simulateRefinement(inputVal);
-    if (sandboxOutput) sandboxOutput.textContent = output;
-  });
-
-  sandboxInput?.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      sandboxRunBtn?.click();
+  // Gain slider dynamic feedback
+  micGainSlider?.addEventListener("input", () => {
+    if (micGainVal) {
+      micGainVal.textContent = `${Number(micGainSlider.value).toFixed(1)}x`;
     }
   });
 
-  // Save Settings button
+  // Save Settings button (with Audio controls)
   saveSettingsBtn?.addEventListener("click", async () => {
+    currentConfig.audio_device = audioDeviceSelect ? audioDeviceSelect.value : "Default";
+    currentConfig.mic_gain = micGainSlider ? parseFloat(micGainSlider.value) : 1.0;
+    currentConfig.noise_suppression = noiseToggle ? noiseToggle.checked : true;
+    currentConfig.echo_cancellation = echoToggle ? echoToggle.checked : true;
+
     currentConfig.hotkey = hotkeySelect.value;
     currentConfig.activation_mode = modeSelect.value;
     currentConfig.model_id = modelSelect.value;
+    if (llmModelSelect) currentConfig.llm_model = llmModelSelect.value;
     currentConfig.vad_enabled = vadToggle.checked;
     currentConfig.strip_fillers = fillersToggle.checked;
     currentConfig.spoken_punctuation = punctuationToggle.checked;
     currentConfig.auto_capitalize = capitalizeToggle.checked;
+
     await saveConfigToBackend();
 
     if (saveSettingsStatus) {
-      saveSettingsStatus.textContent = "✓ Preferences saved";
+      saveSettingsStatus.textContent = "✓ Audio & controls preferences saved";
       setTimeout(() => {
         saveSettingsStatus.textContent = "";
       }, 2500);

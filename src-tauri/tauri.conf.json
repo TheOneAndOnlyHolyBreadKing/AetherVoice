@@ -15,8 +15,10 @@
       {
         "label": "main",
         "title": "AetherVoice",
-        "width": 380,
-        "height": 72,
+        "url": "/index.html",
+        "width": 260,
+        "height": 56,
+        "center": true,
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": true,

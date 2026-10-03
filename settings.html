@@ -12,12 +12,10 @@
       <!-- Left Sidebar -->
       <aside class="sidebar">
         <div class="brand-header">
-          <div class="brand-logo-container">
-            <img src="/src/assets/logo.png" alt="AetherVoice Logo" class="brand-logo" />
-          </div>
+          <img src="/src/assets/logo.png" class="brand-logo" alt="AetherVoice" />
           <div class="brand-text">
             <div class="brand-title">AETHERVOICE</div>
-            <div class="brand-version">v0.1.0 (Offline)</div>
+            <div class="brand-version">v0.1.0</div>
           </div>
         </div>
 
@@ -106,35 +104,13 @@
             </p>
           </div>
 
-          <div class="presets-row">
-            <span class="preset-label">Templates:</span>
-            <button class="preset-chip active" data-preset="architect">Software Architect (Default)</button>
-            <button class="preset-chip" data-preset="clean">Clean Dictation</button>
-            <button class="preset-chip" data-preset="bullets">Structured Bullets</button>
-            <button class="preset-chip" data-preset="slack">Lowercase (Slack)</button>
-            <button class="preset-chip" data-preset="meeting">Meeting Action Items</button>
-          </div>
-
           <div class="editor-container">
             <textarea id="instructions-textarea" class="instructions-textarea" spellcheck="false" placeholder="Write instructions to format and structure your dictation..."></textarea>
           </div>
 
           <div class="action-footer">
             <button id="save-instructions-btn" class="primary-btn">Save</button>
-            <button id="reset-instructions-btn" class="secondary-btn">Reset to Template</button>
             <span id="save-status" class="save-status"></span>
-          </div>
-
-          <!-- Live Instruction Test Sandbox -->
-          <div class="test-sandbox-card">
-            <div class="sandbox-title">⚡ Test Custom Instruction Output</div>
-            <div class="sandbox-desc">Simulate how your instructions will format spoken dictation without typing into other apps:</div>
-            <div class="sandbox-input-row">
-              <input type="text" id="sandbox-input" class="text-input" value="um I was thinking like we need a place to hold user stuff and a button to send period" />
-              <button id="sandbox-run-btn" class="primary-btn">Run Test</button>
-            </div>
-            <div class="sandbox-output-label">Transformed Output:</div>
-            <div id="sandbox-output" class="sandbox-output-box">Database schema for user profiles and a form submission handler.</div>
           </div>
         </section>
 
@@ -146,6 +122,50 @@
           </div>
 
           <div class="settings-form">
+            <!-- Audio Hardware & Settings -->
+            <div class="setting-card">
+              <div class="setting-info">
+                <label class="setting-label">Audio Input Device</label>
+                <div class="setting-desc">Select the physical or virtual microphone connected to your system.</div>
+              </div>
+              <div class="setting-control">
+                <select id="audio-device-select" class="form-select">
+                  <option value="Default">Default System Microphone</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="setting-card">
+              <div class="setting-info">
+                <label class="setting-label">Microphone Input Gain</label>
+                <div class="setting-desc">Boost or attenuate mic volume before feeding the speech engine.</div>
+              </div>
+              <div class="setting-control gain-control-wrap">
+                <input type="range" id="mic-gain-slider" min="0.5" max="2.5" step="0.1" value="1.0" class="form-range" />
+                <span id="mic-gain-val" class="gain-val-badge">1.0x</span>
+              </div>
+            </div>
+
+            <div class="setting-card">
+              <div class="setting-info">
+                <label class="setting-label">Background Noise Suppression</label>
+                <div class="setting-desc">Filter fan whir, air conditioning, and room reverb in real time.</div>
+              </div>
+              <div class="setting-control">
+                <input type="checkbox" id="noise-toggle" class="form-checkbox" checked />
+              </div>
+            </div>
+
+            <div class="setting-card">
+              <div class="setting-info">
+                <label class="setting-label">Acoustic Echo Cancellation</label>
+                <div class="setting-desc">Prevent speaker feedback and system audio bleed from contaminating dictation.</div>
+              </div>
+              <div class="setting-control">
+                <input type="checkbox" id="echo-toggle" class="form-checkbox" checked />
+              </div>
+            </div>
+
             <div class="setting-card">
               <div class="setting-info">
                 <label class="setting-label">Push-to-Talk Hotkey</label>
@@ -178,13 +198,28 @@
             <div class="setting-card">
               <div class="setting-info">
                 <label class="setting-label">Local Speech Engine Model</label>
-                <div class="setting-desc">Whisper Turbo quantized for high accuracy and ultra-low latency.</div>
+                <div class="setting-desc">Whisper Turbo running on GPU for high accuracy and ultra-low latency transcription.</div>
               </div>
               <div class="setting-control">
                 <select id="model-select" class="form-select">
-                  <option value="large-v3-turbo-q5_0">Whisper Large-v3-Turbo Q5_0 (~550 MB)</option>
+                  <option value="large-v3-turbo-q5_0">Whisper Large-v3-Turbo (GPU Active)</option>
                   <option value="medium.en">Whisper Medium.en (~750 MB)</option>
                   <option value="base.en">Whisper Base.en (~140 MB, Fast)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="setting-card">
+              <div class="setting-info">
+                <label class="setting-label">Local Reasoning & Instructions Model (LLM)</label>
+                <div class="setting-desc">Runs locally to understand custom instructions, rephrase thoughts, and format lists naturally.</div>
+              </div>
+              <div class="setting-control">
+                <select id="llm-model-select" class="form-select">
+                  <option value="gemma2:2b">Google Gemma 2 2B (Recommended, GPU Fast)</option>
+                  <option value="llama3.2:1b">Llama 3.2 1B (Ultra-light)</option>
+                  <option value="qwen2.5:1.5b">Qwen 2.5 1.5B (Code & Technical)</option>
+                  <option value="none">Disabled (Verbatim Dictation Only)</option>
                 </select>
               </div>
             </div>
@@ -325,20 +360,40 @@
         <section class="tab-content" id="tab-stats">
           <div class="content-header">
             <h1 class="content-title">Usage & Productivity Stats</h1>
-            <p class="content-subtitle">Metrics tracking your speech dictation productivity.</p>
+            <p class="content-subtitle">Hardware throughput and speech dictation productivity metrics.</p>
+          </div>
+
+          <!-- Most Frequently Used Desktop App -->
+          <div class="top-app-card">
+            <div class="top-app-header">
+              <div>
+                <div class="top-app-title">Most Frequent Dictation Application</div>
+                <div class="top-app-subtitle">The software or browser on your computer where you dictate most frequently</div>
+              </div>
+            </div>
+
+            <div class="top-app-display">
+              <div class="top-app-name-wrap">
+                <span class="top-app-name" id="top-app-name">VS Code</span>
+                <span class="top-app-percentage" id="top-app-percentage">Active Primary</span>
+              </div>
+              <div class="app-breakdown-list" id="app-breakdown-list">
+                <!-- Dynamically populated app records -->
+              </div>
+            </div>
           </div>
 
           <div class="stats-row">
             <div class="stat-card">
-              <div class="stat-number" id="stat-words">1,482</div>
+              <div class="stat-number" id="stat-words">0</div>
               <div class="stat-label">Words Dictated</div>
             </div>
             <div class="stat-card">
-              <div class="stat-number" id="stat-time">18m</div>
+              <div class="stat-number" id="stat-time">0m</div>
               <div class="stat-label">Typing Time Saved</div>
             </div>
             <div class="stat-card">
-              <div class="stat-number" id="stat-wpm">145</div>
+              <div class="stat-number" id="stat-wpm">0</div>
               <div class="stat-label">Average WPM</div>
             </div>
           </div>
@@ -356,7 +411,8 @@
             <div class="about-specs">
               <div><strong>Framework:</strong> Tauri v2 (Rust + TypeScript)</div>
               <div><strong>Audio Subsystem:</strong> CPAL (Windows WASAPI)</div>
-              <div><strong>Default Model:</strong> Whisper Large-v3-Turbo Q5_0 GGUF</div>
+              <div><strong>Speech Recognition:</strong> OpenAI Whisper Large-v3-Turbo (GPU Acceleration)</div>
+              <div><strong>Reasoning & Rewriting LLM:</strong> Google Gemma 2 2B (Local GPU)</div>
               <div><strong>Input Synthesis:</strong> Win32 SendInput Virtual Keystroke Injection</div>
             </div>
           </div>

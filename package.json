@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "dev:desktop": "powershell -Command \"$env:Path = 'C:\\Users\\light\\.cargo\\bin;C:\\Users\\light\\AppData\\Local\\Microsoft\\WinGet\\Packages\\BrechtSanders.WinLibs.POSIX.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe\\mingw64\\bin;' + $env:Path; npx tauri dev\""
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

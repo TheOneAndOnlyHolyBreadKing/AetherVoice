@@ -1,14 +1,92 @@
+use hound::{WavSpec, WavWriter};
+use serde::Deserialize;
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
+use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::sync::Mutex;
 
-/// WhisperEngine handles speech-to-text inference on 16kHz mono audio buffers.
+#[derive(Deserialize)]
+struct TranscribeResponse {
+    status: String,
+    text: Option<String>,
+    error: Option<String>,
+}
+
+/// WhisperEngine maintains a persistent subprocess executing native Whisper inference on GPU.
 pub struct WhisperEngine {
-    model_path: PathBuf,
+    process: Mutex<Option<(Child, ChildStdin, BufReader<ChildStdout>)>>,
+    temp_dir: PathBuf,
 }
 
 impl WhisperEngine {
-    pub fn new<P: AsRef<Path>>(model_path: P) -> Self {
-        Self {
-            model_path: model_path.as_ref().to_path_buf(),
+    pub fn new<P: AsRef<Path>>(_model_path: P) -> Self {
+        let temp_dir = std::env::temp_dir().join("aethervoice_audio");
+        if !temp_dir.exists() {
+            let _ = std::fs::create_dir_all(&temp_dir);
+        }
+
+        let engine = Self {
+            process: Mutex::new(None),
+            temp_dir,
+        };
+
+        // Spawn persistent Python whisper daemon in background
+        engine.spawn_server();
+        engine
+    }
+
+    fn spawn_server(&self) {
+        let mut lock = match self.process.lock() {
+            Ok(l) => l,
+            Err(_) => return,
+        };
+
+        if lock.is_some() {
+            return;
+        }
+
+        let script_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("whisper_server.py");
+        println!("[WhisperEngine] Launching whisper daemon: {:?}", script_path);
+
+        let mut cmd = Command::new("python");
+        cmd.arg(&script_path)
+            .arg("turbo")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit());
+
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            cmd.creation_flags(CREATE_NO_WINDOW);
+        }
+
+        match cmd.spawn() {
+            Ok(mut child) => {
+                let stdin = match child.stdin.take() {
+                    Some(s) => s,
+                    None => return,
+                };
+                let stdout = match child.stdout.take() {
+                    Some(s) => s,
+                    None => return,
+                };
+                let mut reader = BufReader::new(stdout);
+
+                // Wait for the READY handshake from whisper_server
+                let mut line = String::new();
+                if let Ok(_) = reader.read_line(&mut line) {
+                    if line.trim() == "READY" {
+                        println!("[WhisperEngine] Speech recognition engine is online and READY.");
+                    }
+                }
+
+                *lock = Some((child, stdin, reader));
+            }
+            Err(e) => {
+                eprintln!("[WhisperEngine] Failed to spawn Whisper server: {}", e);
+            }
         }
     }
 
@@ -18,30 +96,68 @@ impl WhisperEngine {
             return Ok(String::new());
         }
 
-        let model_path = self.model_path.clone();
-
-        // Run CPU-intensive / native Whisper C++ processing on a dedicated blocking thread
-        tokio::task::spawn_blocking(move || {
-            Self::run_transcription(&model_path, &samples)
-        })
-        .await
-        .map_err(|e| format!("Task execution failed: {}", e))?
-    }
-
-    fn run_transcription(model_path: &Path, samples: &[f32]) -> Result<String, String> {
-        if !model_path.exists() {
-            return Err(format!(
-                "Whisper model file not found at: {}",
-                model_path.display()
-            ));
-        }
-
-        // Fast energy check - if audio is purely silent, return empty without executing inference
+        // Fast energy check: if audio has virtually 0 RMS, skip inference
         let energy = samples.iter().map(|&s| s.abs()).sum::<f32>() / samples.len() as f32;
-        if energy < 0.005 {
+        if energy < 0.001 {
             return Ok(String::new());
         }
 
-        Ok(String::new())
+        let temp_dir = self.temp_dir.clone();
+        
+        // Write audio to temporary 16kHz mono 16-bit WAV file
+        let wav_path = temp_dir.join(format!("rec_{}.wav", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis()));
+        
+        {
+            let spec = WavSpec {
+                channels: 1,
+                sample_rate: 16000,
+                bits_per_sample: 16,
+                sample_format: hound::SampleFormat::Int,
+            };
+            let mut writer = WavWriter::create(&wav_path, spec)
+                .map_err(|e| format!("Failed to create WAV file: {}", e))?;
+            for &s in &samples {
+                let clamped = s.clamp(-1.0, 1.0);
+                let val = (clamped * 32767.0) as i16;
+                writer.write_sample(val).map_err(|e| e.to_string())?;
+            }
+            writer.finalize().map_err(|e| e.to_string())?;
+        }
+
+        // Send file to daemon over IPC
+        let response = {
+            let mut lock = self.process.lock().map_err(|e| e.to_string())?;
+            if lock.is_none() {
+                drop(lock);
+                self.spawn_server();
+                lock = self.process.lock().map_err(|e| e.to_string())?;
+            }
+
+            if let Some((_, stdin, reader)) = lock.as_mut() {
+                let path_str = wav_path.to_string_lossy().to_string();
+                writeln!(stdin, "{}", path_str).map_err(|e| format!("Failed writing to whisper stdin: {}", e))?;
+                stdin.flush().map_err(|e| format!("Failed flushing whisper stdin: {}", e))?;
+
+                let mut resp_line = String::new();
+                reader.read_line(&mut resp_line).map_err(|e| format!("Failed reading whisper stdout: {}", e))?;
+                resp_line
+            } else {
+                return Err("Whisper subprocess is unavailable".to_string());
+            }
+        };
+
+        // Clean up temporary wav file
+        let _ = std::fs::remove_file(&wav_path);
+
+        match serde_json::from_str::<TranscribeResponse>(&response) {
+            Ok(parsed) => {
+                if parsed.status == "ok" {
+                    Ok(parsed.text.unwrap_or_default())
+                } else {
+                    Err(parsed.error.unwrap_or_else(|| "Unknown whisper error".to_string()))
+                }
+            }
+            Err(e) => Err(format!("Invalid whisper response JSON '{}': {}", response.trim(), e)),
+        }
     }
 }

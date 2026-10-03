@@ -1,19 +1,11 @@
 :root {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
   user-select: none;
   -webkit-user-select: none;
   margin: 0;
   padding: 0;
   box-sizing: border-box;
-  background: transparent;
+  background: transparent !important;
   overflow: hidden;
-
-  /* Official Brand Palette */
-  --cyan-aether: #00F2FE;
-  --electric-indigo: #4FACFE;
-  --void-obsidian: #0A0D14;
-  --pure-specular: rgba(255, 255, 255, 0.2);
-  --slate-vapor: #64748B;
 }
 
 * {
@@ -31,169 +23,196 @@ html, body {
   background: transparent !important;
   box-shadow: none !important;
   overflow: hidden;
-  margin: 0;
-  padding: 0;
 }
 
-/* Ethereal Monolith Floating Capsule - Completely Clean, No Dark Shadow */
-.capsule {
+/* Aqua Voice Draggable Segmented Floating Pill */
+.aqua-bubble {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 6px 16px 6px 10px;
-  background: rgba(10, 13, 20, 0.94); /* Crisp Void Obsidian */
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(79, 172, 254, 0.35);
+  height: 44px;
+  background: #000000;
   border-radius: 9999px;
-  box-shadow: none !important; /* Zero external shadow */
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8), 0 2px 8px rgba(0, 0, 0, 0.6);
   cursor: grab;
-  transition: border-color 0.25s ease, background 0.25s ease;
-  width: auto;
-  min-width: 340px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+  padding: 0 4px;
 }
 
-.capsule:active {
+.aqua-bubble:active {
   cursor: grabbing;
 }
 
-/* Standby (Idle) */
-.capsule.idle {
-  border-color: rgba(79, 172, 254, 0.35);
-  box-shadow: none !important;
-}
-
-/* Listening (Hotkey Pressed): Vibrant Cyan Border, Clean No Muddy Shadow */
-.capsule.listening {
-  border-color: var(--cyan-aether);
-  box-shadow: none !important;
-}
-
-/* Processing Phase: Electric Indigo Border */
-.capsule.transcribing {
-  border-color: var(--electric-indigo);
-  box-shadow: none !important;
-}
-
-/* Brand Logo Container */
-.brand-mark {
-  width: 38px;
-  height: 38px;
-  position: relative;
+/* Segment 1: Left Dismiss Button */
+.bubble-action-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
-  pointer-events: none;
-}
-
-.brand-logo-img {
-  width: 100%;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  outline: none;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+  padding: 0 6px;
   height: 100%;
+}
+
+.dismiss-btn {
+  padding-left: 6px;
+  padding-right: 8px;
+}
+
+.dismiss-btn svg {
+  width: 20px;
+  height: 20px;
+  padding: 3px;
+  border-radius: 50%;
+  background: #33383f;
+  color: #94a3b8;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.dismiss-btn:hover svg {
+  background: #475569;
+  color: #f8fafc;
+  transform: scale(1.05);
+}
+
+/* Segment 2: Center Voice Visualizer Area (Draggable) */
+.bubble-center {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+  height: 100%;
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+  border-right: 1px solid rgba(255, 255, 255, 0.12);
+  cursor: grab;
+}
+
+.bubble-center:active {
+  cursor: grabbing;
+}
+
+/* AetherVoice Capsule Branding Logo (Clean, zero lighting glow) */
+.capsule-logo {
+  width: 20px;
+  height: 20px;
   object-fit: contain;
-  transition: all 0.3s ease;
+  flex-shrink: 0;
+  transition: transform 0.2s ease, opacity 0.2s ease;
   pointer-events: none;
+  filter: none !important;
 }
 
-.capsule.listening .brand-logo-img {
-  transform: scale(1.06);
+.aqua-bubble.listening .capsule-logo {
+  transform: scale(1.08);
+  filter: none !important;
+  animation: logo-scale 1.4s infinite ease-in-out;
 }
 
-.capsule.transcribing .brand-logo-img {
-  animation: logo-spin 2.5s linear infinite;
+.aqua-bubble.transcribing .capsule-logo {
+  transform: scale(1.04);
+  filter: none !important;
+  animation: logo-scale 0.8s infinite ease-in-out;
 }
 
-@keyframes logo-spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+@keyframes logo-scale {
+  0%, 100% {
+    transform: scale(1.0);
+    opacity: 0.9;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
 }
 
-/* Audio Waveform / Visualizer bars */
+/* Waveform Visualizer Bars */
 .waveform {
   display: flex;
   align-items: center;
-  gap: 3px;
-  height: 20px;
+  gap: 2.5px;
+  height: 22px;
   pointer-events: none;
 }
 
 .bar {
-  width: 3px;
-  height: 6px;
-  background: var(--slate-vapor);
+  width: 2.5px;
+  height: 4px;
+  background: #94a3b8;
   border-radius: 9999px;
-  transition: height 0.1s ease, background-color 0.2s ease;
+  transition: height 0.05s ease-out, background 0.2s ease;
   pointer-events: none;
 }
 
-.capsule.listening .bar {
-  background: var(--cyan-aether);
-  animation: wave 1s infinite ease-in-out;
+/* Waveform height curve in standby */
+.bar-1  { height: 3px; }
+.bar-2  { height: 5px; }
+.bar-3  { height: 8px; }
+.bar-4  { height: 12px; }
+.bar-5  { height: 16px; }
+.bar-6  { height: 18px; }
+.bar-7  { height: 18px; }
+.bar-8  { height: 15px; }
+.bar-9  { height: 10px; }
+.bar-10 { height: 6px; }
+.bar-11 { height: 4px; }
+.bar-12 { height: 2px; }
+
+/* Dynamic audio motion when speaking / listening */
+.aqua-bubble.listening .bar {
+  background: #ffffff;
 }
 
-.capsule.transcribing .bar {
-  background: var(--electric-indigo);
-  animation: wave 1.2s infinite ease-in-out;
+.aqua-bubble.transcribing .bar {
+  background: #cbd5e1;
+  animation: aqua-transcribe 1.1s infinite ease-in-out;
 }
 
-.bar:nth-child(2) { animation-delay: 0.15s !important; }
-.bar:nth-child(3) { animation-delay: 0.3s !important; }
-.bar:nth-child(4) { animation-delay: 0.45s !important; }
-.bar:nth-child(5) { animation-delay: 0.6s !important; }
-
-@keyframes wave {
-  0%, 100% { height: 6px; }
-  50% { height: 18px; }
+@keyframes aqua-transcribe {
+  0%, 100% {
+    transform: scaleY(0.6);
+  }
+  50% {
+    transform: scaleY(0.9);
+  }
 }
 
-/* Text Content - pointer-events: none ensures dragging capsule never gets blocked */
-.info-section {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  flex: 1;
-  pointer-events: none;
+/* Segment 3: Right Red Stop Button */
+.stop-btn {
+  padding-left: 8px;
+  padding-right: 6px;
 }
 
-.status-label {
-  font-size: 13px;
-  font-weight: 600;
-  color: #f8fafc;
-  letter-spacing: -0.2px;
-  pointer-events: none;
-}
-
-.capsule.listening .status-label {
-  color: var(--cyan-aether);
-}
-
-.capsule.transcribing .status-label {
-  color: var(--electric-indigo);
-}
-
-.hint-label {
-  font-size: 11px;
-  color: rgba(248, 250, 252, 0.6);
-  letter-spacing: -0.1px;
-  pointer-events: none;
-}
-
-/* Action / Settings Button */
-.settings-btn {
-  background: transparent;
-  border: none;
-  color: var(--slate-vapor);
-  cursor: pointer;
-  padding: 5px;
+.stop-icon {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #8e1f1f;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
-  transition: all 0.2s ease;
-  pointer-events: auto;
+  transition: all 0.15s ease;
+  position: relative;
 }
 
-.settings-btn:hover {
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.1);
+.stop-icon::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  background: #ffffff;
+  border-radius: 1.5px;
 }
+
+.stop-btn:hover .stop-icon {
+  background: #b91c1c;
+  transform: scale(1.04);
+  box-shadow: none;
+}
+
+.stop-btn:active .stop-icon {
+  transform: scale(0.96);
+}
+
