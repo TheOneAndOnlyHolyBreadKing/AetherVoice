@@ -1,109 +1,122 @@
-# Project Specification: AetherVoice (Native Cross-Platform Dictation)
+# Project Specification & Living Build Log: AetherVoice
 
 ## 1. Executive Summary & Vision
-AetherVoice is a 100% free, local-first, zero-cloud speech-to-text dictation utility built as an alternative to Aqua Voice.
-- **Zero Cost & Offline:** No API keys, subscriptions, or external cloud relays.
-- **Target OS:** Windows 10/11 (`x86_64`) and macOS (Apple Silicon & Intel).
-- **End-User Distribution:** One-click setup wizard (`AetherVoice-Setup.exe` via NSIS) that auto-configures shortcuts and runs without manual dependency installations or terminal prompts.
+- **Objective**: AetherVoice is a 100% free, local-first, zero-cloud speech-to-text dictation utility built as a privacy-respecting alternative to Aqua Voice.
+- **Core Principles**: Zero Cost, Zero API Keys, 100% Local Inference, Whisper Large-v3-Turbo GGUF execution, Zero Cloud Relays.
+- **Target OS**: Windows 10/11 (`x86_64`) and macOS.
+- **Design Brand Identity**: "The Ethereal Monolith" — Void Obsidian (`#0A0D14`), Cyan Aether (`#00F2FE`), Deep Electric Indigo (`#4FACFE`), and Slate Vapor (`#64748B`).
 
 ---
 
-## 2. Technical Stack & Dependencies
-
-```
-┌────────────────────────────────────────────────────────┐
-│               Frontend Shell (Tauri 2.0)               │
-│        Floating Capsule UI / Settings / Downloader     │
-└───────────────────────────┬────────────────────────────┘
-                            │ Tauri IPC Commands
-┌───────────────────────────▼────────────────────────────┐
-│                    Rust Core Engine                    │
-│  ├─ Global Push-to-Talk (tauri-plugin-global-shortcut) │
-│  ├─ Native Audio Capture (cpal)                        │
-│  ├─ Endpoint & Speech Detection (Silero VAD ONNX)      │
-│  └─ Virtual Keyboard Input (enigo / Win32 SendInput)   │
-└─────────────┬────────────────────────────┬─────────────┘
-              ▼                            ▼
-     Embedded STT Engine            Text Refinement Layer
-     • whisper.cpp via whisper-rs   • Embedded GGUF SLM (llama-cpp-rs)
-     • Whisper Large-v3-Turbo Q5_0  • Fast Regex & Rule Engine
-```
-
-### Core Technologies
-- **App Framework:** Tauri v2 (Rust backend, HTML5/CSS3/TypeScript frontend).
-- **Speech-to-Text Engine:** `whisper-rs` (C++ bindings to `whisper.cpp` compiled directly into the binary; Metal acceleration on macOS, AVX2/DirectML on Windows).
-- **Default STT Model:** `whisper-large-v3-turbo` (quantized to Q5_0, ~550 MB – 800 MB GGUF).
-- **Audio Capture & VAD:** `cpal` (WASAPI on Windows, CoreAudio on macOS) with Silero VAD ONNX for silence suppression.
-- **Text Injection:** Native OS input synthesis via `enigo` (`SendInput` for Windows, `CGEvent` for macOS).
-- **Packaging:** NSIS bundler configured to install in `currentUser` mode (no Admin UAC prompts required).
+## 2. Technical Stack, Toolchains & Dependencies
+- **Shell & UI Framework**: Tauri v2 (`@tauri-apps/api: ^2`, `@tauri-apps/plugin-opener: ^2`).
+- **Frontend**: Vite 8.3.1 + TypeScript + Vanilla CSS (No Tailwind ad-hoc bloat).
+- **Core Backend**: Rust 1.85 / 2021 edition (`stable-x86_64-pc-windows-gnu`).
+- **Native Toolchain**: WinLibs MinGW-w64 (GCC 14.2, Clang 19, CMake, Binutils) in `%LOCALAPPDATA%\Programs\mingw64\bin`.
+- **Audio Capture Subsystem**: `cpal 0.15` (Windows WASAPI loop, 16kHz linear resampling, silence trimming).
+- **Input Injection Engine**: `enigo 0.2` (Win32 `SendInput` virtual keystroke synthesis).
+- **Text Refinement Engine**: Custom regex substitution, user macro replacements, dictionary casing enforcement, and style directives (Software Architect, Bullets, Lowercase).
+- **Persistence**: `%APPDATA%/com.aethervoice.app/aethervoice_config.json` via Tauri IPC (`get_user_config` / `save_user_config`).
 
 ---
 
 ## 3. Architecture & Data Flow
 
-```
-[User holds Push-to-Talk Hotkey] (Default: Right Alt or Ctrl+Space)
-│
-▼
-[1. Audio Capture Pipeline]
-• cpal streams PCM audio (16kHz, 16-bit mono) into memory buffer
-• Silero VAD monitors speech frames and drops ambient silence
-│
-[User releases Push-to-Talk Hotkey]
-│
-▼
-[2. Local STT Processing]
-• Buffer passes to embedded whisper-rs instance
-• Model: ggml-large-v3-turbo-q5_0.bin
-• Latency target: <250ms for a 5-second audio chunk
-│
-▼
-[3. Refinement & Formatting Pass]
-• Fast regex substitution (e.g., "new line" -> "\n", "period" -> ".")
-• Context pass: Strips vocal fillers ("um", "uh", "you know") and applies auto-casing
-│
-▼
-[4. OS Insertion]
-• Rust invokes enigo to simulate immediate keyboard keystrokes directly into the active cursor
+```text
+[User Holds Hotkey: Right Alt / Ctrl+Space]
+  │
+  ▼
+[AudioRecorder (CPAL)] ──── 16kHz PCM Buffer ───► [Silero / Energy Silence Trimmer]
+  │
+[User Releases Hotkey]
+  │
+  ▼
+[Whisper Engine] ────────── Local GGUF Inference (ggml-large-v3-turbo-q5_0.bin)
+  │
+  ▼
+[Text Refinement Layer] ─── User Instructions + Replacements + Dictionary
+  │
+  ▼
+[Native Input Injector] ─── Win32 SendInput Keystroke Typing into Active Window
 ```
 
 ---
 
-## 4. First-Launch Auto-Provisioning Flow
+## 4. Current Implementation Progress & Milestones
 
-To keep the initial installer tiny (~15–20 MB) and avoid distributing multi-gigabyte setup files:
+- [x] **Phase 1: Toolchain Setup & Windows MinGW Environment**
+  - Configured WinLibs MinGW-w64 toolchain in user path.
+  - Set default Rust target to `x86_64-pc-windows-gnu`.
+  - Added Win32 `GetShortPathNameW` path sanitizer in `build.rs` to fix `windres` unquoted space compiler errors on Windows.
 
-1. User installs via `AetherVoice-Setup.exe` and launches `AetherVoice.exe`.
-2. Application checks `tauri::path::BaseDirectory::AppData` for `models/ggml-large-v3-turbo-q5_0.bin`.
-3. If not present:
-   - UI displays a clean progress bar modal: *"Preparing local AI dictation engine..."*
-   - Rust background worker downloads the model directly from Hugging Face Hub (zero developer bandwidth cost).
-4. Once verified, the app minimizes directly to the OS system tray.
+- [x] **Phase 2: Core Audio & Dictation Engine**
+  - Built `AudioRecorder` with `cpal` streaming at 16kHz mono.
+  - Implemented `unsafe impl Send for AudioRecorder` and `Sync` to satisfy Tauri thread bounds.
+  - Built `downloader.rs` for Hugging Face streaming model download with progress reporting.
+  - Built `whisper.rs` thread-safe inference runner.
+  - Built `injector.rs` using `enigo` for keystroke synthesis.
+
+- [x] **Phase 3: Brand Identity & UI Shell ("The Ethereal Monolith")**
+  - Integrated custom icon (`src-tauri/icons/icon.ico`) and brand logo (`src/assets/logo.png`).
+  - Styled floating draggable capsule widget (`src/styles.css`, `index.html`, `src/main.ts`).
+  - Added animated sound visualizer bars and active listening states.
+
+- [x] **Phase 4: Aqua Voice-Style Settings & Custom Instructions Panel**
+  - Multi-window configuration: Added dedicated 960x650 `settings` window in `tauri.conf.json`.
+  - Created `settings.html`, `src/settings.css`, and `src/settings.ts`.
+  - Integrated 8 navigation sections: Settings, Dictionary, Replacements, Instructions, History, Offline Engine, Stats, About.
+  - Implemented Custom Instructions with 5 preset templates: Software Architect, Clean Dictation, Structured Bullets, Lowercase (Slack), and Meeting Action Items.
+  - Added interactive Live Test Sandbox directly inside settings.
+  - Added system tray menu with "Settings...", "Toggle Capsule", and "Quit".
+
+- [x] **Phase 5: Floating Capsule Physics & Visual Cleanup**
+  - Enabled desktop-wide dragging anywhere on the capsule (`start_dragging` IPC + `getCurrentWindow().startDragging()`).
+  - Added `core:window:allow-start-dragging` permission in `capabilities/default.json`.
+  - Added `pointer-events: none` on inner labels/icons so dragging is never intercepted.
+  - Completely removed outer dark drop shadows (`box-shadow: none !important`) for a crisp, transparent float.
+
+- [ ] **Phase 6: whisper-rs native build & NSIS installer bundling**
+  - Link embedded `whisper-rs` C++ library with CPU/GPU acceleration.
+  - Build final standalone release installer with `npm run tauri build`.
 
 ---
 
-## 5. Implementation Tasks & Roadmap
+## 5. Verified Working Capabilities (Proven State)
+1. **Frontend Compilation**: `npm run build` bundles client cleanly in < 1 second.
+2. **Backend Compilation**: `cargo check` and `cargo build` pass with exit code 0.
+3. **Desktop Dragging**: Grabbing anywhere on the floating capsule moves it across the desktop.
+4. **Settings Window**: Clicking the gear icon opens the full Aqua Voice-style settings panel with custom instructions.
+5. **Config & IPC**: `get_user_config` and `save_user_config` persist settings to JSON.
 
-### Phase 1: Project Scaffolding
-- Initialize Tauri v2 workspace with standard Rust toolchain.
-- Configure `Cargo.toml` with dependencies: `tauri`, `tauri-plugin-global-shortcut`, `whisper-rs`, `cpal`, `enigo`, `tokio`, `reqwest`.
-- Set up Windows NSIS packaging configuration in `tauri.conf.json` with `installMode: "currentUser"`.
+---
 
-### Phase 2: Audio Capture & Speech Detection
-- Implement `cpal` input stream listener with 16kHz resampler.
-- Add circular buffer to record only while the global hotkey is held.
-- Integrate Silero VAD to detect audio cutoffs and trim blank margins.
+## 6. Load-Bearing Decisions & Gotchas Resolved
 
-### Phase 3: Whisper Integration
-- Write `whisper-rs` wrapper to initialize context from local `.bin` / `.gguf` file.
-- Implement async transcription pipeline delivering raw text strings back to Tauri state.
-- Create automated download helper with chunk-based progress reporting sent via Tauri events to the frontend.
+- **Windows Space Paths & `windres` Preprocessor Bug**:
+  - *Problem*: Path `C:\Projects\Software Apps\laptop and desktop\AetherVoice` causes `cc1.exe` to fail on unquoted spaces.
+  - *Fix*: `build.rs` calls Win32 `GetShortPathNameW` to map `OUT_DIR` and `current_dir` to 8.3 short paths.
+- **Export Ordinal Overflow (`export ordinal too large: 137401`)**:
+  - *Problem*: Tauri template defaulted `crate-type = ["staticlib", "cdylib", "rlib"]`. Windows PE DLLs strictly enforce 16-bit export tables (<65,536 symbols).
+  - *Fix*: Set `crate-type = ["rlib"]` in `src-tauri/Cargo.toml`.
+- **CPAL Raw Pointer Bounds**:
+  - *Problem*: `cpal::Stream` contains raw pointers on Windows preventing `tauri::manage`.
+  - *Fix*: Explicitly implemented `unsafe impl Send for AudioRecorder` and `Sync`.
+- **Window Dragging in Tauri v2**:
+  - *Problem*: `startDragging()` is disabled unless `core:window:allow-start-dragging` is declared in capabilities.
+  - *Fix*: Added permission in `capabilities/default.json` and added fallback `start_dragging` IPC command.
 
-### Phase 4: Text Refinement & Keystroke Injection
-- Write deterministic cleanup module for common punctuation and spoken macros.
-- Hook `enigo` to type cleaned text into the active focused window.
-- Implement permission pre-flight checks (notably macOS Accessibility API prompts, Windows non-admin input injection).
+---
 
-### Phase 5: UI/UX & Packaging
-- Build the floating glassmorphic tray capsule UI matching the "Ethereal Monolith" design spec.
-- Test compilation with `npm run tauri build` to output the final Windows `.exe` setup package.
+## 7. Immediate Next Steps (For Laptop / Desktop Crossover)
+1. **Launch & Test Application**: Run `npm run tauri dev` in the project root.
+2. **Test Floating Capsule**: Click and drag the capsule across screens, verify no dark box shadow.
+3. **Test Settings Panel**: Click gear icon, edit custom instructions, switch presets, test phrases in sandbox, and hit Save.
+4. **Model Provisioning**: Download default `ggml-large-v3-turbo-q5_0.bin` via the in-app progress bar.
+
+---
+
+## 8. Run & Verification Runbook
+- Start Dev Server: `npm run tauri dev`
+- Test Frontend Build: `npm run build`
+- Test Backend Check: `cargo check` (inside `src-tauri`)
+- Test Backend Build: `cargo build` (inside `src-tauri`)
