@@ -28,16 +28,16 @@ function updateState(state: DictationState, _detail?: string) {
   }
 }
 
-// Base standby heights for the 12 waveform bars
-const STANDBY_HEIGHTS = [3, 5, 8, 12, 16, 18, 18, 15, 10, 6, 4, 2];
+// Base flat standby height: starts as a clean flat line across all 12 bars
+const FLAT_HEIGHT = 2.0;
 const waveformBars = Array.from({ length: 12 }, (_, i) => 
   document.querySelector(`.bar-${i + 1}`) as HTMLElement | null
 );
 
 function resetWaveform() {
-  waveformBars.forEach((bar, idx) => {
+  waveformBars.forEach((bar) => {
     if (bar) {
-      bar.style.height = `${STANDBY_HEIGHTS[idx]}px`;
+      bar.style.height = `${FLAT_HEIGHT}px`;
     }
   });
 }
@@ -55,25 +55,29 @@ function startVisualizer() {
 
     try {
       const rawLevel = await invoke<number>("get_audio_level");
-      // rawLevel is RMS (0.0 to ~1.0). Scale to give a responsive bouncy visual
-      const boost = Math.min(1.0, Math.pow(rawLevel * 4.5, 0.75));
+      // rawLevel is RMS (0.0 to ~1.0). When silent/below threshold, stay flat.
+      // Above threshold, dynamically expand based on vocal intensity.
+      if (rawLevel < 0.015) {
+        resetWaveform();
+        return;
+      }
+
+      const boost = Math.min(1.0, Math.pow(rawLevel * 4.0, 0.7));
 
       waveformBars.forEach((bar, idx) => {
         if (!bar) return;
-        const base = STANDBY_HEIGHTS[idx];
-        const centerFactor = 1.0 - Math.abs(idx - 5.5) / 6.0; // 0.1 to 1.0
-        // Dynamic jitter for natural organic frequency movement
-        const jitter = (Math.sin(Date.now() / 80 + idx * 0.9) * 0.25 + 0.75);
+        const centerFactor = Math.sin(((idx + 0.5) / 12) * Math.PI); // Natural smooth bell curve: peaks in center
+        const jitter = (Math.sin(Date.now() / 70 + idx * 0.85) * 0.2 + 0.8);
         const dynamicHeight = Math.max(
-          2.5,
-          Math.min(22, base * (1 - boost * 0.5) + (22 * boost * centerFactor * jitter))
+          FLAT_HEIGHT,
+          Math.min(22, FLAT_HEIGHT + (20 * boost * centerFactor * jitter))
         );
         bar.style.height = `${dynamicHeight.toFixed(1)}px`;
       });
     } catch {
       // ignore when polling fails
     }
-  }, 40);
+  }, 35);
 }
 
 function stopVisualizer() {

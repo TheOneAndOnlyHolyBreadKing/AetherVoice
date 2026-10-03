@@ -1,3 +1,6 @@
+@property --angle-1 { syntax: "<angle>"; inherits: false; initial-value: -75deg; }
+@property --angle-2 { syntax: "<angle>"; inherits: false; initial-value: -45deg; }
+
 :root {
   user-select: none;
   -webkit-user-select: none;
@@ -6,6 +9,8 @@
   box-sizing: border-box;
   background: transparent !important;
   overflow: hidden;
+  --background: 240 10% 4%;
+  --foreground: 210 40% 98%;
 }
 
 * {
@@ -25,19 +30,160 @@ html, body {
   overflow: hidden;
 }
 
-/* Aqua Voice Draggable Segmented Floating Pill */
+/* Glass Button Spec 3D Wrapper */
+.glass-button-wrap {
+  --anim-time: .4s;
+  --anim-ease: cubic-bezier(.25, 1, .5, 1);
+  --border-width: clamp(1px, .0625em, 4px);
+  z-index: 2;
+  transform-style: preserve-3d;
+  transition: transform var(--anim-time) var(--anim-ease);
+  position: relative;
+  border-radius: 9999px;
+  cursor: grab;
+}
+
+.glass-button-wrap:has(.glass-button:active) {
+  transform: rotateX(20deg);
+  cursor: grabbing;
+}
+
+/* Glass Button Ambient Shadow */
+.glass-button-shadow {
+  --shadow-cutoff-fix: 2em;
+  width: calc(100% + var(--shadow-cutoff-fix));
+  height: calc(100% + var(--shadow-cutoff-fix));
+  top: calc(0% - var(--shadow-cutoff-fix)/2);
+  left: calc(0% - var(--shadow-cutoff-fix)/2);
+  filter: blur(clamp(2px, .125em, 12px));
+  transition: filter var(--anim-time) var(--anim-ease);
+  pointer-events: none;
+  position: absolute;
+  z-index: 0;
+  border-radius: 9999px;
+}
+
+.glass-button-shadow:after {
+  content: "";
+  background: linear-gradient(180deg, oklch(from var(--foreground) l c h / 20%), oklch(from var(--foreground) l c h / 10%));
+  width: calc(100% - var(--shadow-cutoff-fix) - .25em);
+  height: calc(100% - var(--shadow-cutoff-fix) - .25em);
+  top: calc(var(--shadow-cutoff-fix) - .5em);
+  left: calc(var(--shadow-cutoff-fix) - .875em);
+  box-sizing: border-box;
+  transition: all var(--anim-time) var(--anim-ease);
+  opacity: 0.6;
+  border-radius: 9999px;
+  padding: .125em;
+  position: absolute;
+  -webkit-mask-image: linear-gradient(#000 0 0), linear-gradient(#000 0 0);
+  mask-image: linear-gradient(#000 0, #000 0), linear-gradient(#000 0, #000 0);
+  -webkit-mask-position: 0 0, 0 0;
+  mask-position: 0 0, 0 0;
+  -webkit-mask-size: auto, auto;
+  mask-size: auto, auto;
+  -webkit-mask-repeat: repeat, repeat;
+  mask-repeat: repeat, repeat;
+  -webkit-mask-clip: content-box, border-box;
+  mask-clip: content-box, border-box;
+  -webkit-mask-origin: content-box, border-box;
+  mask-origin: content-box, border-box;
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  -webkit-mask-source-type: auto, auto;
+  mask-mode: match-source, match-source;
+}
+
+.glass-button-wrap:has(.glass-button:hover) .glass-button-shadow {
+  filter: blur(clamp(2px, .0625em, 6px));
+}
+
+.glass-button-wrap:has(.glass-button:hover) .glass-button-shadow:after {
+  top: calc(var(--shadow-cutoff-fix) - .875em);
+  opacity: 0.85;
+}
+
+.glass-button-wrap:has(.glass-button:active) .glass-button-shadow {
+  filter: blur(clamp(2px, .125em, 12px));
+}
+
+.glass-button-wrap:has(.glass-button:active) .glass-button-shadow:after {
+  top: calc(var(--shadow-cutoff-fix) - .5em);
+  opacity: .75;
+}
+
+/* Glass Button Body Applied to Capsule */
+.glass-button {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-backdrop-filter: blur(clamp(2px, .25em, 8px));
+  backdrop-filter: blur(clamp(2px, .25em, 8px));
+  transition: all var(--anim-time) var(--anim-ease);
+  background: linear-gradient(-75deg, oklch(from var(--background) l c h / 15%), oklch(from var(--background) l c h / 35%), oklch(from var(--background) l c h / 15%));
+  box-shadow: inset 0 .125em .125em oklch(from var(--foreground) l c h / 8%), inset 0 -.125em .125em oklch(from var(--background) l c h / 60%), 0 .25em .125em -.125em oklch(from var(--foreground) l c h / 20%), 0 0 .1em .25em inset oklch(from var(--background) l c h / 20%), 0 0 oklch(from var(--background) l c h);
+  position: relative;
+  z-index: 1;
+}
+
+.glass-button:hover {
+  -webkit-backdrop-filter: blur(.02em);
+  backdrop-filter: blur(.02em);
+  box-shadow: inset 0 .125em .125em oklch(from var(--foreground) l c h / 8%), inset 0 -.125em .125em oklch(from var(--background) l c h / 60%), 0 .15em .05em -.1em oklch(from var(--foreground) l c h / 25%), 0 0 .05em .1em inset oklch(from var(--background) l c h / 50%), 0 0 oklch(from var(--background) l c h);
+  transform: scale(.985);
+}
+
+/* Spec Conic Border Sheen */
+.glass-button:after {
+  content: "";
+  z-index: 1;
+  width: calc(100% + var(--border-width));
+  height: calc(100% + var(--border-width));
+  top: calc(0% - var(--border-width)/2);
+  left: calc(0% - var(--border-width)/2);
+  padding: var(--border-width);
+  box-sizing: border-box;
+  background: conic-gradient(from var(--angle-1) at 50% 50%, oklch(from var(--foreground) l c h / 50%) 0%, transparent 5% 40%, oklch(from var(--foreground) l c h / 50%) 50%, transparent 60% 95%, oklch(from var(--foreground) l c h / 50%) 100%), linear-gradient(180deg, oklch(from var(--background) l c h / 50%), oklch(from var(--background) l c h / 50%));
+  transition: all var(--anim-time) var(--anim-ease), --angle-1 .5s ease;
+  box-shadow: inset 0 0 0 calc(var(--border-width)/2) oklch(from var(--background) l c h / 50%);
+  border-radius: 9999px;
+  position: absolute;
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(#000 0 0), linear-gradient(#000 0 0);
+  mask-image: linear-gradient(#000 0, #000 0), linear-gradient(#000 0, #000 0);
+  -webkit-mask-position: 0 0, 0 0;
+  mask-position: 0 0, 0 0;
+  -webkit-mask-size: auto, auto;
+  mask-size: auto, auto;
+  -webkit-mask-repeat: repeat, repeat;
+  mask-repeat: repeat, repeat;
+  -webkit-mask-clip: content-box, border-box;
+  mask-clip: content-box, border-box;
+  -webkit-mask-origin: content-box, border-box;
+  mask-origin: content-box, border-box;
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  -webkit-mask-source-type: auto, auto;
+  mask-mode: match-source, match-source;
+}
+
+.glass-button:hover:after {
+  --angle-1: -125deg;
+}
+
+.glass-button:active:after {
+  --angle-1: -75deg;
+}
+
+/* Aqua Voice Segmented Floating Pill Inside Glass Container */
 .aqua-bubble {
   display: flex;
   align-items: center;
-  height: 44px;
-  background: #000000;
+  height: 48px;
   border-radius: 9999px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8), 0 2px 8px rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   cursor: grab;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   overflow: hidden;
-  padding: 0 4px;
+  padding: 0 6px;
 }
 
 .aqua-bubble:active {
@@ -68,15 +214,17 @@ html, body {
   height: 20px;
   padding: 3px;
   border-radius: 50%;
-  background: #33383f;
+  background: rgba(51, 56, 63, 0.6);
   color: #94a3b8;
-  transition: background 0.15s ease, color 0.15s ease;
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
 }
 
 .dismiss-btn:hover svg {
-  background: #475569;
+  background: rgba(71, 85, 105, 0.8);
   color: #f8fafc;
-  transform: scale(1.05);
+  transform: scale(1.08);
 }
 
 /* Segment 2: Center Voice Visualizer Area (Draggable) */
@@ -84,7 +232,7 @@ html, body {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 0 12px;
+  padding: 0 14px;
   height: 100%;
   border-left: 1px solid rgba(255, 255, 255, 0.12);
   border-right: 1px solid rgba(255, 255, 255, 0.12);
@@ -95,10 +243,10 @@ html, body {
   cursor: grabbing;
 }
 
-/* AetherVoice Capsule Branding Logo (Clean, zero lighting glow) */
+/* AetherVoice Capsule Branding Logo (Enlarged per request: 26px) */
 .capsule-logo {
-  width: 20px;
-  height: 20px;
+  width: 26px;
+  height: 26px;
   object-fit: contain;
   flex-shrink: 0;
   transition: transform 0.2s ease, opacity 0.2s ease;
@@ -107,13 +255,13 @@ html, body {
 }
 
 .aqua-bubble.listening .capsule-logo {
-  transform: scale(1.08);
+  transform: scale(1.1);
   filter: none !important;
   animation: logo-scale 1.4s infinite ease-in-out;
 }
 
 .aqua-bubble.transcribing .capsule-logo {
-  transform: scale(1.04);
+  transform: scale(1.06);
   filter: none !important;
   animation: logo-scale 0.8s infinite ease-in-out;
 }
@@ -121,62 +269,51 @@ html, body {
 @keyframes logo-scale {
   0%, 100% {
     transform: scale(1.0);
-    opacity: 0.9;
+    opacity: 0.92;
   }
   50% {
-    transform: scale(1.1);
+    transform: scale(1.12);
     opacity: 1;
   }
 }
 
-/* Waveform Visualizer Bars */
+/* Waveform Visualizer - Starts completely flat at 2px, dynamic scale on voice */
 .waveform {
   display: flex;
   align-items: center;
-  gap: 2.5px;
-  height: 22px;
+  gap: 3px;
+  height: 24px;
   pointer-events: none;
 }
 
 .bar {
   width: 2.5px;
-  height: 4px;
-  background: #94a3b8;
+  height: 2px; /* Starts as clean flat line */
+  background: #64748b;
   border-radius: 9999px;
-  transition: height 0.05s ease-out, background 0.2s ease;
+  transition: height 0.05s ease-out, background 0.2s ease, opacity 0.2s ease;
   pointer-events: none;
+  opacity: 0.7;
 }
-
-/* Waveform height curve in standby */
-.bar-1  { height: 3px; }
-.bar-2  { height: 5px; }
-.bar-3  { height: 8px; }
-.bar-4  { height: 12px; }
-.bar-5  { height: 16px; }
-.bar-6  { height: 18px; }
-.bar-7  { height: 18px; }
-.bar-8  { height: 15px; }
-.bar-9  { height: 10px; }
-.bar-10 { height: 6px; }
-.bar-11 { height: 4px; }
-.bar-12 { height: 2px; }
 
 /* Dynamic audio motion when speaking / listening */
 .aqua-bubble.listening .bar {
-  background: #ffffff;
+  background: #f8fafc;
+  opacity: 1;
 }
 
 .aqua-bubble.transcribing .bar {
-  background: #cbd5e1;
+  background: #38bdf8;
+  opacity: 0.9;
   animation: aqua-transcribe 1.1s infinite ease-in-out;
 }
 
 @keyframes aqua-transcribe {
   0%, 100% {
-    transform: scaleY(0.6);
+    height: 3px;
   }
   50% {
-    transform: scaleY(0.9);
+    height: 12px;
   }
 }
 
@@ -187,8 +324,8 @@ html, body {
 }
 
 .stop-icon {
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
   background: #8e1f1f;
   display: flex;
@@ -196,6 +333,7 @@ html, body {
   justify-content: center;
   transition: all 0.15s ease;
   position: relative;
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .stop-icon::after {
@@ -208,11 +346,18 @@ html, body {
 
 .stop-btn:hover .stop-icon {
   background: #b91c1c;
-  transform: scale(1.04);
-  box-shadow: none;
+  transform: scale(1.06);
+  box-shadow: 0 2px 8px rgba(185, 28, 28, 0.4);
 }
 
 .stop-btn:active .stop-icon {
-  transform: scale(0.96);
+  transform: scale(0.95);
 }
 
+@media (hover: none) and (pointer: coarse) {
+  .glass-button:after,
+  .glass-button:hover:after,
+  .glass-button:active:after {
+    --angle-1: -75deg;
+  }
+}
