@@ -294,7 +294,12 @@ pub async fn refine_with_llm(raw: &str, config: &AppConfig) -> String {
         custom_instruction_block
     );
 
-    println!("[AetherVoice] Sending to local LLM ({}) for Aqua Voice dictation formatting...", model_to_use);
+    println!(
+        "[AetherVoice] Dictation LLM ({}) processing with custom instructions ({} chars):\n---\n{}\n---",
+        model_to_use,
+        instructions.len(),
+        if instructions.is_empty() { "(Default: Verbatim formatting)" } else { instructions }
+    );
 
     let body = serde_json::json!({
         "model": model_to_use,
@@ -327,7 +332,7 @@ pub async fn refine_with_llm(raw: &str, config: &AppConfig) -> String {
         "stream": false,
         "keep_alive": "24h",
         "options": {
-            "temperature": 0.1,
+            "temperature": 0.0,
             "top_p": 0.9
         }
     });
