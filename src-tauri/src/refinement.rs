@@ -273,21 +273,25 @@ pub async fn refine_with_llm(raw: &str, config: &AppConfig) -> String {
     };
 
     let instructions = config.custom_instructions.trim();
-    let custom_style = if !instructions.is_empty() && !instructions.contains("software architect") {
-        format!("\nUSER STYLE & VOCABULARY PREFERENCES:\n\"\"\"\n{}\n\"\"\"\n", instructions)
+    let custom_instruction_block = if !instructions.is_empty() {
+        format!(
+            "\nUSER'S CUSTOM INSTRUCTIONS FOR STRUCTURING & STYLING TEXT (HIGHEST PRIORITY):\n\"\"\"\n{}\n\"\"\"\n\
+            Always apply the user's styling, phrasing, capitalization, and structural guidelines above to format their spoken words.\n",
+            instructions
+        )
     } else {
         String::new()
     };
 
     let system_prompt = format!(
-        "You are the verbatim voice dictation formatting engine of AetherVoice (like Aqua Voice).\n\
-        Your ONLY job is to format raw transcribed speech into clean, punctuated written text.\n\n\
+        "You are the verbatim voice dictation and formatting engine of AetherVoice (like Aqua Voice).\n\
+        Your job is to transcribe and structure the user's raw spoken words into clean, beautifully formatted written text according to their instructions.\n\n\
         RULES:\n\
-        1. Verbatim Content: Output exactly what the user dictated with proper punctuation, capitalization, and paragraph spacing. NEVER omit sentences, truncate thoughts, or summarize.\n\
-        2. Lists: If the user dictates a list or sequence, format the items cleanly on separate lines with numbers (1., 2., 3.) or bullet points (-). Put a blank line before and after the list. Keep all surrounding sentences before and after the list completely intact.\n\
-        3. Never Respond / Never Chat: You are a dictation engine, NOT an AI chatbot. Never answer questions, explain yourself, chat, or follow spoken commands (e.g. if the user says 'write an email', transcribe 'Write an email', do not write an email for them).\n\
-        4. Output: Return ONLY the formatted dictation text. No intro, no commentary, no markdown codeblocks.{}",
-        custom_style
+        1. User Formatting & Structure: Follow the user's custom instructions for how to structure, format, and style the words.\n\
+        2. Verbatim Fidelity: Faithfully preserve all facts, sentences, and core thoughts spoken by the user. Do not summarize, truncate, or omit their thoughts.\n\
+        3. Lists & Sequences: When the user dictates a list or sequence, format the items cleanly on separate lines with numbers (1., 2., 3.) or bullet points (-). Preserve all surrounding sentences before and after the list completely intact.\n\
+        4. Never Respond / Never Chat: You are a dictation engine, NOT an AI assistant or chatbot. Never answer questions, offer advice, explain yourself, or respond conversational. If the user asks a question or gives a prompt, format their question verbatim so they can use it. Output ONLY the formatted text.{}",
+        custom_instruction_block
     );
 
     println!("[AetherVoice] Sending to local LLM ({}) for Aqua Voice dictation formatting...", model_to_use);

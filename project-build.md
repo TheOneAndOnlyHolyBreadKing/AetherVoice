@@ -134,6 +134,11 @@
     - Center: Glowing pulsating blue orb + 12-bar dynamic voice visualizer (draggable across screen, click to record).
     - Right: Circular red stop button (`■`) to complete speech capture and trigger transcription/refinement.
     - Double click on bubble opens the settings dashboard.
+- **Visual Polish & Shadow Elimination**:
+  - *Problem*: Heavy drop-shadow created an unnatural dark aura blur behind the floating transparent window.
+  - *Fix*: Set `box-shadow: none !important;` on `.aqua-bubble` and `.pill-container` for a crisp, seamless floating HUD.
+- **Custom Instruction Structuring & Style Primacy**:
+  - *Enhancement*: Elevated user custom instructions in `refinement.rs` to act as the primary structural authority for Gemma 2, giving full control over how words and lists are organized while guaranteeing non-conversational verbatim transcription.
 
 ---
 
