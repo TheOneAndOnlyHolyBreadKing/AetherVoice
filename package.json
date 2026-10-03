@@ -11,9 +11,13 @@
     "dev:desktop": "powershell -Command \"$env:Path = 'C:\\Users\\light\\.cargo\\bin;C:\\Users\\light\\AppData\\Local\\Microsoft\\WinGet\\Packages\\BrechtSanders.WinLibs.POSIX.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe\\mingw64\\bin;' + $env:Path; npx tauri dev\""
   },
   "dependencies": {
+    "@paper-design/shaders": "^0.0.81",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-opener": "^2",
-    "class-variance-authority": "^0.7.1"
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.51.0",
+    "tailwind-merge": "^3.7.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",

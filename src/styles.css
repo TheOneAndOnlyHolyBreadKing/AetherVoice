@@ -237,10 +237,47 @@ html, body {
   border-left: 1px solid rgba(255, 255, 255, 0.12);
   border-right: 1px solid rgba(255, 255, 255, 0.12);
   cursor: grab;
+  position: relative;
+  overflow: hidden;
+  border-radius: 4px;
 }
 
 .bubble-center:active {
   cursor: grabbing;
+}
+
+/* Liquid Metal Shader Canvas Background Layer */
+.liquid-metal-canvas-wrap {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 9999px;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.85;
+  transition: opacity 0.3s ease;
+}
+
+.liquid-metal-canvas-wrap canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  border-radius: 9999px !important;
+  object-fit: cover !important;
+}
+
+.aqua-bubble.listening .liquid-metal-canvas-wrap {
+  opacity: 1;
+}
+
+.aqua-bubble.transcribing .liquid-metal-canvas-wrap {
+  opacity: 0.9;
 }
 
 /* AetherVoice Capsule Branding Logo (Enlarged per request: 26px) */
