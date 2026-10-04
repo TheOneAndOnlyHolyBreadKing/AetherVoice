@@ -54,9 +54,13 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "resources": [
+      "whisper_server.py"
+    ],
     "windows": {
       "nsis": {
-        "installMode": "currentUser"
+        "installMode": "currentUser",
+        "installerHooks": "installer_hooks.nsh"
       }
     }
   }

@@ -66,7 +66,25 @@ impl WhisperEngine {
         }
 
         let model = self.model_name.lock().map(|m| m.clone()).unwrap_or_else(|_| "turbo".to_string());
-        let script_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("whisper_server.py");
+        let script_path = {
+            let manifest_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("whisper_server.py");
+            if manifest_path.exists() {
+                manifest_path
+            } else if let Ok(exe_path) = std::env::current_exe() {
+                let exe_dir = exe_path.parent().unwrap_or(std::path::Path::new(""));
+                let candidate1 = exe_dir.join("whisper_server.py");
+                let candidate2 = exe_dir.join("resources").join("whisper_server.py");
+                if candidate1.exists() {
+                    candidate1
+                } else if candidate2.exists() {
+                    candidate2
+                } else {
+                    manifest_path
+                }
+            } else {
+                manifest_path
+            }
+        };
         println!("[WhisperEngine] Launching whisper daemon with model '{}': {:?}", model, script_path);
 
         let mut cmd = Command::new("python");
