@@ -293,7 +293,7 @@ function syncLLMModelDropdown() {
   // Filter available models that are installed on disk
   const matchedInstalled: { id: string; name: string }[] = [];
 
-  // Match known catalog items
+  // Match only official application catalog items that are locally installed
   CATALOG_MODELS.forEach((cat) => {
     const isInstalled = installedModelIds.some((installedName) => {
       const lower = installedName.toLowerCase();
@@ -303,16 +303,6 @@ function syncLLMModelDropdown() {
 
     if (isInstalled) {
       matchedInstalled.push({ id: cat.id, name: `${cat.name} (${cat.size})` });
-    }
-  });
-
-  // Also include any other custom models the user has in Ollama
-  installedModelIds.forEach((installedName) => {
-    const alreadyMatched = matchedInstalled.some(
-      (m) => m.id.toLowerCase() === installedName.toLowerCase() || installedName.toLowerCase().startsWith(m.id.toLowerCase())
-    );
-    if (!alreadyMatched && !installedName.includes("whisper")) {
-      matchedInstalled.push({ id: installedName, name: `${installedName} (Local Model)` });
     }
   });
 
