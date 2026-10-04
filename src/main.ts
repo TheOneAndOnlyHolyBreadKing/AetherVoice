@@ -142,6 +142,16 @@ function recordSessionStats(text: string, durationSec: number, targetApp: string
 
 async function startDictation() {
   if (isRecording) return;
+  try {
+    const isVis = await appWindow.isVisible();
+    if (!isVis) {
+      console.log("Capsule is not visible; skipping dictation start.");
+      return;
+    }
+  } catch (e) {
+    console.debug("Could not verify window visibility:", e);
+  }
+
   isRecording = true;
   recordingStartTime = Date.now();
   updateState("listening");
@@ -151,6 +161,8 @@ async function startDictation() {
   } catch (err) {
     console.error("Failed to start dictation:", err);
     stopVisualizer();
+    isRecording = false;
+    updateState("idle");
   }
 }
 

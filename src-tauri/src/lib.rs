@@ -309,6 +309,14 @@ fn toggle_system_mute() {}
 
 #[tauri::command]
 fn start_dictation(state: State<'_, AppState>, app: AppHandle) -> Result<(), String> {
+    // Only allow recording if the capsule interface is visible on screen
+    if let Some(main_win) = app.get_webview_window("main") {
+        let is_visible = main_win.is_visible().unwrap_or(false);
+        if !is_visible {
+            return Err("Capsule interface is not visible; recording disabled".to_string());
+        }
+    }
+
     let noise_deafening = {
         let conf = state.config.read().map_err(|e| e.to_string())?;
         conf.noise_deafening
@@ -569,6 +577,18 @@ fn spawn_global_hotkey_listener(app: AppHandle) {
                 }
             };
 
+            // Check if the capsule window is visible. If not visible/toggled off, do NOT record.
+            let is_capsule_visible = app.get_webview_window("main")
+                .and_then(|w| w.is_visible().ok())
+                .unwrap_or(false);
+
+            if !is_capsule_visible {
+                // Reset state so when capsule becomes visible again, keys aren't considered stuck down
+                IS_KEY_DOWN.store(false, Ordering::Relaxed);
+                IS_HANDS_FREE_DOWN.store(false, Ordering::Relaxed);
+                continue;
+            }
+
             // 1. Check primary hotkey
             let primary_pressed = check_key(&hotkey);
             let was_primary_down = IS_KEY_DOWN.load(Ordering::Relaxed);
@@ -692,14 +712,8 @@ pub fn run() {
 
             let _tray = tray_builder.build(app)?;
 
-            if let Some(main_win) = app.get_webview_window("main") {
-                println!("[AetherVoice] Showing floating bubble...");
-                let _ = main_win.show();
-                let _ = main_win.set_focus();
-            } else {
-                eprintln!("[AetherVoice] ERROR: Main window not found during setup!");
-            }
-
+            // The capsule remains invisible on launch until explicitly toggled on from system tray
+            println!("[AetherVoice] App started quietly in system tray.");
             println!("[AetherVoice] Setup completed successfully.");
             Ok(())
         })
