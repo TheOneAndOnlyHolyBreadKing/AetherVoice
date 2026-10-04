@@ -867,17 +867,17 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: var(--surface-card);
-  border: 1px solid var(--border-subtle);
+  background: #14171f;
+  border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 12px;
-  padding: 18px 22px;
-  gap: 20px;
+  padding: 16px 20px;
+  gap: 24px;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .model-catalog-card:hover {
-  background: var(--surface-card-hover);
-  border-color: rgba(255, 255, 255, 0.14);
+  background: #191e2b;
+  border-color: rgba(255, 255, 255, 0.12);
 }
 
 .model-catalog-info {
@@ -885,23 +885,25 @@ body {
   flex-direction: column;
   gap: 6px;
   flex: 1;
+  min-width: 0;
 }
 
 .model-title-row {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
 }
 
 .model-catalog-name {
-  font-size: 15px;
+  font-size: 15.5px;
   font-weight: 700;
   color: #FFFFFF;
   letter-spacing: -0.2px;
 }
 
 .model-status-badge {
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 600;
   padding: 2px 8px;
   border-radius: 12px;
@@ -910,13 +912,13 @@ body {
 }
 
 .model-status-badge.installed {
-  background: rgba(34, 197, 94, 0.15);
+  background: rgba(34, 197, 94, 0.12);
   color: #4ade80;
-  border: 1px solid rgba(34, 197, 94, 0.3);
+  border: 1px solid rgba(34, 197, 94, 0.28);
 }
 
 .model-status-badge.available {
-  background: rgba(148, 163, 184, 0.12);
+  background: rgba(148, 163, 184, 0.1);
   color: #94a3b8;
   border: 1px solid rgba(148, 163, 184, 0.2);
 }
@@ -928,49 +930,120 @@ body {
 }
 
 .model-catalog-desc {
-  font-size: 12.5px;
-  color: var(--text-secondary);
+  font-size: 13px;
+  color: #94A3B8;
   line-height: 1.45;
 }
 
-.model-meta-row {
+.model-bottom-row {
   display: flex;
-  gap: 16px;
   align-items: center;
-  font-size: 11.5px;
-  color: var(--text-muted);
+  gap: 16px;
+  font-size: 12px;
+  color: #64748B;
+  margin-top: 4px;
 }
 
 .model-meta-item {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
+}
+
+.model-meta-item svg {
+  stroke: #64748B;
+  flex-shrink: 0;
+}
+
+.model-side-metrics {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 14px;
+  flex-shrink: 0;
+}
+
+.model-meter-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 170px;
+}
+
+.model-meter-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.model-meter-label {
+  font-size: 12px;
+  color: #94A3B8;
+  text-align: right;
+  width: 58px;
+  font-weight: 500;
+}
+
+.model-meter-bar-track {
+  width: 90px;
+  height: 7px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+
+.model-meter-bar-fill {
+  height: 100%;
+  background: #f472b6;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.model-action-footer {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.model-size-badge {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: #94A3B8;
+  font-weight: 500;
+}
+
+.model-size-badge svg {
+  stroke: #94A3B8;
 }
 
 .model-actions-wrap {
   display: flex;
   align-items: center;
-  gap: 10px;
 }
 
 .model-btn-download {
-  background: linear-gradient(135deg, #2563eb, #38bdf8);
-  border: none;
-  color: #FFFFFF;
+  background: transparent;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  color: #38bdf8;
   font-size: 12.5px;
   font-weight: 600;
-  padding: 8px 16px;
-  border-radius: 8px;
+  padding: 5px 12px;
+  border-radius: 6px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   transition: all 0.2s ease;
 }
 
 .model-btn-download:hover {
-  opacity: 0.92;
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);
+  background: rgba(56, 189, 248, 0.12);
+  border-color: #38bdf8;
+  color: #FFFFFF;
 }
 
 .model-btn-download:disabled {
@@ -979,24 +1052,23 @@ body {
 }
 
 .model-btn-delete {
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.25);
-  color: #f87171;
+  background: transparent;
+  border: none;
+  color: #fca5a5;
   font-size: 12.5px;
-  font-weight: 600;
-  padding: 8px 16px;
-  border-radius: 8px;
+  font-weight: 500;
+  padding: 5px 8px;
+  border-radius: 6px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   transition: all 0.2s ease;
 }
 
 .model-btn-delete:hover {
-  background: rgba(239, 68, 68, 0.2);
-  border-color: rgba(239, 68, 68, 0.4);
-  color: #fca5a5;
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
 }
 
 .model-btn-delete:disabled {
@@ -1015,7 +1087,7 @@ body {
 
 .model-progress-bar {
   height: 100%;
-  background: linear-gradient(90deg, #2563eb, #38bdf8);
+  background: linear-gradient(90deg, #f472b6, #ec4899);
   border-radius: 3px;
   width: 0%;
   transition: width 0.2s ease;

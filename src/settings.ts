@@ -13,7 +13,10 @@ interface ModelCatalogItem {
   parameters: string;
   description: string;
   category: string;
+  accuracy: number; // 0 to 100 percentage
+  speed: number;    // 0 to 100 percentage
   recommended?: boolean;
+  language?: string;
 }
 
 const CATALOG_MODELS: ModelCatalogItem[] = [
@@ -22,49 +25,89 @@ const CATALOG_MODELS: ModelCatalogItem[] = [
     name: "Google Gemma 2 2B",
     size: "1.6 GB",
     parameters: "2 Billion",
-    description: "Ultra-fast, high-precision instruction structuring and rewriting. Ideal for fast voice transcription formatting with minimal latency.",
+    description: "Exceptional speed and precision. Optimized by Google DeepMind for fast reasoning, sentence polishing, and structured dictation formatting.",
     category: "Balanced & Fast",
-    recommended: true
+    accuracy: 94,
+    speed: 97,
+    recommended: true,
+    language: "Multilingual"
   },
   {
     id: "llama3.2:1b",
     name: "Meta Llama 3.2 1B",
     size: "1.3 GB",
     parameters: "1 Billion",
-    description: "Extremely lightweight edge model with minimal RAM footprint. Good for simple list structuring and capitalization on low-spec hardware.",
-    category: "Ultra-Lightweight"
+    description: "Ultra-lightweight edge model. Boots instantly, minimal GPU/CPU RAM consumption. Perfect for low-latency verbatim restructuring.",
+    category: "Ultra-Lightweight",
+    accuracy: 82,
+    speed: 99,
+    language: "Multilingual"
   },
   {
     id: "llama3.2:3b",
     name: "Meta Llama 3.2 3B",
     size: "2.0 GB",
     parameters: "3 Billion",
-    description: "Excellent multi-turn reasoning and complex instruction following with strong vocabulary preservation.",
-    category: "Balanced"
+    description: "State-of-the-art compact reasoning. Excellent multi-sentence context retention and deep understanding of spoken nuances and instructions.",
+    category: "Balanced",
+    accuracy: 92,
+    speed: 91,
+    language: "Multilingual"
+  },
+  {
+    id: "qwen2.5:0.5b",
+    name: "Qwen 2.5 0.5B",
+    size: "398 MB",
+    parameters: "0.5 Billion",
+    description: "Featherweight sub-billion model. Under 400 MB download size. Blazing fast punctuation and sentence casing on any hardware.",
+    category: "Featherweight",
+    accuracy: 78,
+    speed: 100,
+    language: "Multilingual"
   },
   {
     id: "qwen2.5:1.5b",
     name: "Qwen 2.5 1.5B",
-    size: "1.0 GB",
+    size: "986 MB",
     parameters: "1.5 Billion",
-    description: "Optimized for software development, coding terminology, technical jargon, and markdown structuring.",
-    category: "Technical & Code"
+    description: "Tailored for software engineering and technical writing. Excels at preserving programming syntax, variable names, and code snippets.",
+    category: "Technical & Code",
+    accuracy: 91,
+    speed: 95,
+    language: "Multilingual"
   },
   {
     id: "qwen2.5:3b",
     name: "Qwen 2.5 3B",
     size: "1.9 GB",
     parameters: "3 Billion",
-    description: "Advanced coding and structured output engine. Excels at converting rambling technical thoughts into clean bullet points.",
-    category: "Technical & Code"
+    description: "Advanced coding & reasoning engine. Converts rambling technical thoughts into clean bullet points, API designs, and structured lists.",
+    category: "Technical & Code",
+    accuracy: 95,
+    speed: 89,
+    language: "Multilingual"
+  },
+  {
+    id: "deepseek-r1:1.5b",
+    name: "DeepSeek R1 1.5B",
+    size: "1.1 GB",
+    parameters: "1.5 Billion",
+    description: "Distilled reasoning model with chain-of-thought comprehension. Formats intricate complex instructions with extraordinary logical consistency.",
+    category: "Reasoning & Logic",
+    accuracy: 93,
+    speed: 93,
+    language: "Multilingual"
   },
   {
     id: "mistral:7b",
     name: "Mistral 7B",
     size: "4.1 GB",
     parameters: "7 Billion",
-    description: "Heavyweight reasoning model with profound writing fluency, deep comprehension, and advanced grammar refinement.",
-    category: "High Accuracy"
+    description: "Heavyweight flagship reasoning model with profound writing fluency, deep contextual comprehension, and advanced grammar restructuring.",
+    category: "High Accuracy",
+    accuracy: 98,
+    speed: 76,
+    language: "Multilingual"
   }
 ];
 
@@ -328,27 +371,83 @@ async function loadAndRenderModels() {
           ${model.recommended ? '<span style="font-size: 11px; background: rgba(37,99,235,0.2); color: #60a5fa; border: 1px solid rgba(37,99,235,0.3); padding: 1px 7px; border-radius: 10px; font-weight: 600;">Recommended</span>' : ''}
         </div>
         <div class="model-catalog-desc">${model.description}</div>
-        <div class="model-meta-row">
-          <div class="model-meta-item"><span>Size:</span> <strong>${model.size}</strong></div>
-          <div class="model-meta-item"><span>Parameters:</span> <strong>${model.parameters}</strong></div>
-          <div class="model-meta-item"><span>Category:</span> <strong>${model.category}</strong></div>
+        
+        <div class="model-bottom-row">
+          <div class="model-meta-item">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="2" y1="12" x2="22" y2="12"></line>
+              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+            </svg>
+            <span>${model.language || "Multilingual"}</span>
+          </div>
+          <div class="model-meta-item">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+            </svg>
+            <span>${model.parameters}</span>
+          </div>
+          <div class="model-meta-item">
+            <span>🏷 ${model.category}</span>
+          </div>
         </div>
+
         ${progressHtml}
       </div>
-      <div class="model-actions-wrap">
-        ${
-          isDownloading
-            ? `<button class="model-btn-download" disabled>
-                 <span>⏳ Downloading...</span>
-               </button>`
-            : isInstalled
-            ? `<button class="model-btn-delete" data-model="${model.id}">
-                 <span>🗑 Delete Model</span>
-               </button>`
-            : `<button class="model-btn-download" data-model="${model.id}">
-                 <span>⬇ Download Model</span>
-               </button>`
-        }
+
+      <div class="model-side-metrics">
+        <div class="model-meter-container">
+          <div class="model-meter-row">
+            <span class="model-meter-label">accuracy</span>
+            <div class="model-meter-bar-track">
+              <div class="model-meter-bar-fill" style="width: ${model.accuracy}%"></div>
+            </div>
+          </div>
+          <div class="model-meter-row">
+            <span class="model-meter-label">speed</span>
+            <div class="model-meter-bar-track">
+              <div class="model-meter-bar-fill" style="width: ${model.speed}%"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="model-action-footer">
+          <div class="model-size-badge">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+              <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+              <line x1="6" y1="6" x2="6.01" y2="6"></line>
+              <line x1="6" y1="18" x2="6.01" y2="18"></line>
+            </svg>
+            <span>${model.size}</span>
+          </div>
+
+          <div class="model-actions-wrap">
+            ${
+              isDownloading
+                ? `<button class="model-btn-download" disabled>
+                     <span>⏳ Downloading...</span>
+                   </button>`
+                : isInstalled
+                ? `<button class="model-btn-delete" data-model="${model.id}">
+                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                       <path d="M3 6h18"></path>
+                       <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                       <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                     </svg>
+                     <span>Delete</span>
+                   </button>`
+                : `<button class="model-btn-download" data-model="${model.id}">
+                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                       <polyline points="7 10 12 15 17 10"></polyline>
+                       <line x1="12" y1="15" x2="12" y2="3"></line>
+                     </svg>
+                     <span>Download</span>
+                   </button>`
+            }
+          </div>
+        </div>
       </div>
     `;
 
