@@ -397,17 +397,19 @@ async function loadAndRenderModels() {
 
       <div class="model-side-metrics">
         <div class="model-meter-container">
-          <div class="model-meter-row">
+          <div class="model-meter-row" title="${model.accuracy}% instruction & formatting fidelity">
             <span class="model-meter-label">accuracy</span>
             <div class="model-meter-bar-track">
               <div class="model-meter-bar-fill" style="width: ${model.accuracy}%"></div>
             </div>
+            <span class="model-meter-val">${model.accuracy}%</span>
           </div>
-          <div class="model-meter-row">
+          <div class="model-meter-row" title="${model.speed}% throughput efficiency">
             <span class="model-meter-label">speed</span>
             <div class="model-meter-bar-track">
               <div class="model-meter-bar-fill" style="width: ${model.speed}%"></div>
             </div>
+            <span class="model-meter-val">${model.speed}%</span>
           </div>
         </div>
 

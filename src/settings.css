@@ -967,14 +967,23 @@ body {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  width: 170px;
+  width: 215px;
 }
 
 .model-meter-row {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 10px;
+  gap: 8px;
+}
+
+.model-meter-val {
+  font-size: 11px;
+  color: var(--text-primary, #F8FAFC);
+  font-weight: 600;
+  width: 34px;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
 }
 
 .model-meter-label {
@@ -996,9 +1005,10 @@ body {
 
 .model-meter-bar-fill {
   height: 100%;
-  background: #f472b6;
+  background: #FFFFFF;
   border-radius: 4px;
   transition: width 0.3s ease;
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.25);
 }
 
 .model-action-footer {
@@ -1087,8 +1097,9 @@ body {
 
 .model-progress-bar {
   height: 100%;
-  background: linear-gradient(90deg, #f472b6, #ec4899);
+  background: linear-gradient(90deg, #FFFFFF, var(--cyan-aether, #38bdf8));
   border-radius: 3px;
   width: 0%;
   transition: width 0.2s ease;
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.35);
 }
