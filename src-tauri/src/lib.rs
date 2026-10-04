@@ -265,8 +265,61 @@ fn get_audio_devices() -> Vec<String> {
     AudioRecorder::list_input_devices()
 }
 
+#[cfg(windows)]
+static ATOMIC_SYSTEM_MUTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+#[cfg(windows)]
+fn toggle_system_mute() {
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+        SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, VK_VOLUME_MUTE,
+    };
+    unsafe {
+        let mut inputs = [
+            INPUT {
+                r#type: INPUT_KEYBOARD,
+                Anonymous: INPUT_0 {
+                    ki: KEYBDINPUT {
+                        wVk: VK_VOLUME_MUTE,
+                        wScan: 0,
+                        dwFlags: 0,
+                        time: 0,
+                        dwExtraInfo: 0,
+                    },
+                },
+            },
+            INPUT {
+                r#type: INPUT_KEYBOARD,
+                Anonymous: INPUT_0 {
+                    ki: KEYBDINPUT {
+                        wVk: VK_VOLUME_MUTE,
+                        wScan: 0,
+                        dwFlags: KEYEVENTF_KEYUP,
+                        time: 0,
+                        dwExtraInfo: 0,
+                    },
+                },
+            },
+        ];
+        SendInput(2, inputs.as_mut_ptr(), std::mem::size_of::<INPUT>() as i32);
+    }
+}
+
+#[cfg(not(windows))]
+fn toggle_system_mute() {}
+
 #[tauri::command]
 fn start_dictation(state: State<'_, AppState>, app: AppHandle) -> Result<(), String> {
+    let noise_deafening = {
+        let conf = state.config.read().map_err(|e| e.to_string())?;
+        conf.noise_deafening
+    };
+
+    #[cfg(windows)]
+    if noise_deafening && !ATOMIC_SYSTEM_MUTED.load(std::sync::atomic::Ordering::Relaxed) {
+        toggle_system_mute();
+        ATOMIC_SYSTEM_MUTED.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
     let mut recorder_lock = state.recorder.lock().map_err(|e| e.to_string())?;
     if recorder_lock.is_none() {
         let device_name = {
@@ -287,6 +340,14 @@ fn start_dictation(state: State<'_, AppState>, app: AppHandle) -> Result<(), Str
 
 #[tauri::command]
 async fn stop_dictation(state: State<'_, AppState>, app: AppHandle) -> Result<String, String> {
+    #[cfg(windows)]
+    {
+        if ATOMIC_SYSTEM_MUTED.load(std::sync::atomic::Ordering::Relaxed) {
+            toggle_system_mute();
+            ATOMIC_SYSTEM_MUTED.store(false, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+
     let (samples, _gain) = {
         let conf = state.config.read().map_err(|e| e.to_string())?;
         let g = conf.mic_gain;
@@ -300,22 +361,32 @@ async fn stop_dictation(state: State<'_, AppState>, app: AppHandle) -> Result<St
 
     let _ = app.emit("dictation-state", "transcribing");
 
+    let config = {
+        let lock = state.config.read().map_err(|e| e.to_string())?;
+        lock.clone()
+    };
+
+    let target_whisper_model = if config.model_id.contains("medium") {
+        "medium.en"
+    } else if config.model_id.contains("base") {
+        "base.en"
+    } else {
+        "turbo"
+    };
+
     let whisper_arc = Arc::clone(&state.whisper);
     let raw_text = {
         let mut whisper_guard = whisper_arc.lock().await;
         if whisper_guard.is_none() {
-            *whisper_guard = Some(WhisperEngine::new("turbo"));
+            *whisper_guard = Some(WhisperEngine::new(target_whisper_model));
+        } else if let Some(whisper) = whisper_guard.as_ref() {
+            whisper.set_model(target_whisper_model);
         }
         if let Some(whisper) = whisper_guard.as_ref() {
             whisper.transcribe(samples).await?
         } else {
             String::new()
         }
-    };
-
-    let config = {
-        let lock = state.config.read().map_err(|e| e.to_string())?;
-        lock.clone()
     };
 
     let screen_context = if config.deep_context {

@@ -16,10 +16,11 @@ struct TranscribeResponse {
 pub struct WhisperEngine {
     process: Mutex<Option<(Child, ChildStdin, BufReader<ChildStdout>)>>,
     temp_dir: PathBuf,
+    model_name: Mutex<String>,
 }
 
 impl WhisperEngine {
-    pub fn new<P: AsRef<Path>>(_model_path: P) -> Self {
+    pub fn new(model_name: &str) -> Self {
         let temp_dir = std::env::temp_dir().join("aethervoice_audio");
         if !temp_dir.exists() {
             let _ = std::fs::create_dir_all(&temp_dir);
@@ -28,11 +29,30 @@ impl WhisperEngine {
         let engine = Self {
             process: Mutex::new(None),
             temp_dir,
+            model_name: Mutex::new(model_name.to_string()),
         };
 
         // Spawn persistent Python whisper daemon in background
         engine.spawn_server();
         engine
+    }
+
+    pub fn set_model(&self, new_model: &str) {
+        let mut cur_model = match self.model_name.lock() {
+            Ok(m) => m,
+            Err(_) => return,
+        };
+        if *cur_model != new_model {
+            *cur_model = new_model.to_string();
+            // Kill existing process if running so spawn_server restarts with new model
+            if let Ok(mut lock) = self.process.lock() {
+                if let Some((mut child, _, _)) = lock.take() {
+                    let _ = child.kill();
+                }
+            }
+            drop(cur_model);
+            self.spawn_server();
+        }
     }
 
     fn spawn_server(&self) {
@@ -45,12 +65,13 @@ impl WhisperEngine {
             return;
         }
 
+        let model = self.model_name.lock().map(|m| m.clone()).unwrap_or_else(|_| "turbo".to_string());
         let script_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("whisper_server.py");
-        println!("[WhisperEngine] Launching whisper daemon: {:?}", script_path);
+        println!("[WhisperEngine] Launching whisper daemon with model '{}': {:?}", model, script_path);
 
         let mut cmd = Command::new("python");
         cmd.arg(&script_path)
-            .arg("turbo")
+            .arg(&model)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit());

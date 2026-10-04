@@ -35,6 +35,8 @@ pub struct AppConfig {
     pub vad_enabled: bool,
     pub strip_fillers: bool,
     pub spoken_punctuation: bool,
+    #[serde(default = "default_noise_deafening")]
+    pub noise_deafening: bool,
     #[serde(default = "default_auto_capitalize")]
     pub auto_capitalize: bool,
     pub dictionary: Vec<String>,
@@ -43,6 +45,10 @@ pub struct AppConfig {
     pub deep_context: bool,
     #[serde(default = "default_hands_free_hotkey")]
     pub hands_free_hotkey: String,
+}
+
+fn default_noise_deafening() -> bool {
+    false
 }
 
 fn default_auto_capitalize() -> bool {
@@ -80,6 +86,7 @@ Act as an intelligent, high-fidelity voice dictation assistant. Transform spoken
             mic_gain: 1.0,
             noise_suppression: true,
             echo_cancellation: true,
+            noise_deafening: false,
             vad_enabled: true,
             strip_fillers: true,
             spoken_punctuation: true,

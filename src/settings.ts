@@ -125,6 +125,7 @@ interface AppConfig {
   mic_gain: number;
   noise_suppression: boolean;
   echo_cancellation: boolean;
+  noise_deafening?: boolean;
   dictionary: string[];
   replacements: ReplacementItem[];
   deep_context?: boolean;
@@ -178,6 +179,7 @@ const micGainSlider = document.getElementById("mic-gain-slider") as HTMLInputEle
 const micGainVal = document.getElementById("mic-gain-val") as HTMLElement;
 const noiseToggle = document.getElementById("noise-toggle") as HTMLInputElement;
 const echoToggle = document.getElementById("echo-toggle") as HTMLInputElement;
+const noiseDeafeningToggle = document.getElementById("noise-deafening-toggle") as HTMLInputElement | null;
 
 const hotkeySelect = document.getElementById("hotkey-select") as HTMLSelectElement;
 const handsFreeHotkeySelect = document.getElementById("hands-free-hotkey-select") as HTMLSelectElement | null;
@@ -1141,6 +1143,7 @@ async function loadConfig() {
   }
   if (noiseToggle) noiseToggle.checked = currentConfig.noise_suppression ?? true;
   if (echoToggle) echoToggle.checked = currentConfig.echo_cancellation ?? true;
+  if (noiseDeafeningToggle) noiseDeafeningToggle.checked = currentConfig.noise_deafening ?? false;
 
   await populateAudioDevices();
   renderDictionary();
@@ -1286,6 +1289,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     currentConfig.mic_gain = micGainSlider ? parseFloat(micGainSlider.value) : 1.0;
     currentConfig.noise_suppression = noiseToggle ? noiseToggle.checked : true;
     currentConfig.echo_cancellation = echoToggle ? echoToggle.checked : true;
+    currentConfig.noise_deafening = noiseDeafeningToggle ? noiseDeafeningToggle.checked : false;
 
     currentConfig.hotkey = hotkeySelect.value;
     if (handsFreeHotkeySelect) currentConfig.hands_free_hotkey = handsFreeHotkeySelect.value;

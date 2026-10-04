@@ -168,6 +168,16 @@
 
             <div class="setting-card">
               <div class="setting-info">
+                <label class="setting-label">Noise-Deafening Mode (Mute System Audio)</label>
+                <div class="setting-desc">Automatically mute all system playback noise and background apps while recording, and instantly unmute when finished.</div>
+              </div>
+              <div class="setting-control">
+                <input type="checkbox" id="noise-deafening-toggle" class="form-checkbox" />
+              </div>
+            </div>
+
+            <div class="setting-card">
+              <div class="setting-info">
                 <label class="setting-label">Push-to-Talk Hotkey</label>
                 <div class="setting-desc">The key or shortcut you hold down to dictate.</div>
               </div>
@@ -214,7 +224,7 @@
             <div class="setting-card">
               <div class="setting-info">
                 <label class="setting-label">Local Speech Engine Model</label>
-                <div class="setting-desc">Whisper Turbo running on GPU for high accuracy and ultra-low latency transcription.</div>
+                <div class="setting-desc">Local Whisper models running on GPU. Choose between Large-v3-Turbo for ultra-fast high-accuracy dictation, Medium for balanced resource usage, or Base for minimum memory footprint.</div>
               </div>
               <div class="setting-control">
                 <select id="model-select" class="form-select">
