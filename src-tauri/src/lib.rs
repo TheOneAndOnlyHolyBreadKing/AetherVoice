@@ -168,6 +168,99 @@ async fn ensure_model(app: AppHandle) -> Result<String, String> {
 }
 
 #[tauri::command]
+async fn get_installed_llm_models() -> Result<Vec<String>, String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_millis(3000))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let resp = client
+        .get("http://127.0.0.1:11434/api/tags")
+        .send()
+        .await
+        .map_err(|e| format!("Failed to connect to local Ollama: {}", e))?;
+
+    if !resp.status().is_success() {
+        return Err(format!("Ollama returned HTTP {}", resp.status()));
+    }
+
+    let val = resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())?;
+    let mut names = Vec::new();
+    if let Some(models) = val["models"].as_array() {
+        for m in models {
+            if let Some(name) = m["name"].as_str() {
+                names.push(name.to_string());
+            }
+        }
+    }
+    Ok(names)
+}
+
+#[tauri::command]
+async fn pull_llm_model(app: AppHandle, model: String) -> Result<(), String> {
+    use futures_util::StreamExt;
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(1800))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let body = serde_json::json!({
+        "name": model,
+        "stream": true
+    });
+
+    let resp = client
+        .post("http://127.0.0.1:11434/api/pull")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to initiate model pull: {}", e))?;
+
+    if !resp.status().is_success() {
+        return Err(format!("Ollama pull error: HTTP {}", resp.status()));
+    }
+
+    let mut stream = resp.bytes_stream();
+    while let Some(chunk_res) = stream.next().await {
+        if let Ok(bytes) = chunk_res {
+            if let Ok(text) = std::str::from_utf8(&bytes) {
+                for line in text.lines() {
+                    if let Ok(json_obj) = serde_json::from_str::<serde_json::Value>(line) {
+                        let _ = app.emit("model-pull-progress", &json_obj);
+                    }
+                }
+            }
+        }
+    }
+    let _ = app.emit("model-pull-completed", serde_json::json!({ "model": model }));
+    Ok(())
+}
+
+#[tauri::command]
+async fn delete_llm_model(model: String) -> Result<(), String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let body = serde_json::json!({
+        "name": model
+    });
+
+    let resp = client
+        .delete("http://127.0.0.1:11434/api/delete")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to delete model: {}", e))?;
+
+    if !resp.status().is_success() {
+        return Err(format!("Failed to delete model: HTTP {}", resp.status()));
+    }
+    Ok(())
+}
+
+#[tauri::command]
 fn get_audio_devices() -> Vec<String> {
     AudioRecorder::list_input_devices()
 }
@@ -449,6 +542,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             check_model_status,
             ensure_model,
+            get_installed_llm_models,
+            pull_llm_model,
+            delete_llm_model,
             start_dictation,
             stop_dictation,
             test_inject,

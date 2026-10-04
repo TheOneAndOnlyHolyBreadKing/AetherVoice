@@ -861,3 +861,162 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(79, 172, 254, 0.3);
 }
+
+/* Models Catalog Styles */
+.model-catalog-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 18px 22px;
+  gap: 20px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.model-catalog-card:hover {
+  background: var(--surface-card-hover);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.model-catalog-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+
+.model-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.model-catalog-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: #FFFFFF;
+  letter-spacing: -0.2px;
+}
+
+.model-status-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.model-status-badge.installed {
+  background: rgba(34, 197, 94, 0.15);
+  color: #4ade80;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.model-status-badge.available {
+  background: rgba(148, 163, 184, 0.12);
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.model-status-badge.downloading {
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.model-catalog-desc {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.model-meta-row {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.model-meta-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.model-actions-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.model-btn-download {
+  background: linear-gradient(135deg, #2563eb, #38bdf8);
+  border: none;
+  color: #FFFFFF;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.model-btn-download:hover {
+  opacity: 0.92;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);
+}
+
+.model-btn-download:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.model-btn-delete {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: #f87171;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.model-btn-delete:hover {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
+}
+
+.model-btn-delete:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.model-progress-bar-wrap {
+  width: 100%;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 6px;
+}
+
+.model-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #2563eb, #38bdf8);
+  border-radius: 3px;
+  width: 0%;
+  transition: width 0.2s ease;
+}

@@ -1,9 +1,72 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 
 interface ReplacementItem {
   spoken: string;
   replacement: string;
 }
+
+interface ModelCatalogItem {
+  id: string;
+  name: string;
+  size: string;
+  parameters: string;
+  description: string;
+  category: string;
+  recommended?: boolean;
+}
+
+const CATALOG_MODELS: ModelCatalogItem[] = [
+  {
+    id: "gemma2:2b",
+    name: "Google Gemma 2 2B",
+    size: "1.6 GB",
+    parameters: "2 Billion",
+    description: "Ultra-fast, high-precision instruction structuring and rewriting. Ideal for fast voice transcription formatting with minimal latency.",
+    category: "Balanced & Fast",
+    recommended: true
+  },
+  {
+    id: "llama3.2:1b",
+    name: "Meta Llama 3.2 1B",
+    size: "1.3 GB",
+    parameters: "1 Billion",
+    description: "Extremely lightweight edge model with minimal RAM footprint. Good for simple list structuring and capitalization on low-spec hardware.",
+    category: "Ultra-Lightweight"
+  },
+  {
+    id: "llama3.2:3b",
+    name: "Meta Llama 3.2 3B",
+    size: "2.0 GB",
+    parameters: "3 Billion",
+    description: "Excellent multi-turn reasoning and complex instruction following with strong vocabulary preservation.",
+    category: "Balanced"
+  },
+  {
+    id: "qwen2.5:1.5b",
+    name: "Qwen 2.5 1.5B",
+    size: "1.0 GB",
+    parameters: "1.5 Billion",
+    description: "Optimized for software development, coding terminology, technical jargon, and markdown structuring.",
+    category: "Technical & Code"
+  },
+  {
+    id: "qwen2.5:3b",
+    name: "Qwen 2.5 3B",
+    size: "1.9 GB",
+    parameters: "3 Billion",
+    description: "Advanced coding and structured output engine. Excels at converting rambling technical thoughts into clean bullet points.",
+    category: "Technical & Code"
+  },
+  {
+    id: "mistral:7b",
+    name: "Mistral 7B",
+    size: "4.1 GB",
+    parameters: "7 Billion",
+    description: "Heavyweight reasoning model with profound writing fluency, deep comprehension, and advanced grammar refinement.",
+    category: "High Accuracy"
+  }
+];
 
 interface AppConfig {
   custom_instructions: string;
@@ -100,6 +163,14 @@ const replacementsTbody = document.getElementById("replacements-tbody") as HTMLE
 // History Tab
 const historyList = document.getElementById("history-list") as HTMLElement;
 
+// Models Tab
+const modelsList = document.getElementById("models-list") as HTMLElement | null;
+const refreshModelsBtn = document.getElementById("refresh-models-btn") as HTMLButtonElement | null;
+
+// Track active downloading models
+const downloadingModels = new Map<string, { status: string; completed?: number; total?: number }>();
+let installedModelIds: string[] = [];
+
 // Stats Tab (Desktop Application Usage & Productivity)
 const topAppName = document.getElementById("top-app-name") as HTMLElement | null;
 const topAppPercentage = document.getElementById("top-app-percentage") as HTMLElement | null;
@@ -121,7 +192,211 @@ function switchTab(tabId: string) {
     updateRealStats();
   } else if (tabId === "history") {
     renderHistory();
+  } else if (tabId === "models") {
+    loadAndRenderModels();
   }
+}
+
+// Check installed Ollama models and render the Models Tab & Dropdown
+async function fetchInstalledModels(): Promise<string[]> {
+  try {
+    const models = await invoke<string[]>("get_installed_llm_models");
+    installedModelIds = models || [];
+    return installedModelIds;
+  } catch (err) {
+    console.debug("Failed to query Ollama models:", err);
+    installedModelIds = [];
+    return [];
+  }
+}
+
+// Dynamically populate the "Local Reasoning & Instructions Model" dropdown in Settings
+// ONLY includes models currently installed on the machine (+ Disabled)
+function syncLLMModelDropdown() {
+  if (!llmModelSelect) return;
+
+  const previousValue = currentConfig.llm_model || llmModelSelect.value || "gemma2:2b";
+  llmModelSelect.innerHTML = "";
+
+  // Filter available models that are installed on disk
+  const matchedInstalled: { id: string; name: string }[] = [];
+
+  // Match known catalog items
+  CATALOG_MODELS.forEach((cat) => {
+    const isInstalled = installedModelIds.some((installedName) => {
+      const lower = installedName.toLowerCase();
+      const catLower = cat.id.toLowerCase();
+      return lower === catLower || lower.startsWith(`${catLower}:`) || lower.replace(":latest", "") === catLower;
+    });
+
+    if (isInstalled) {
+      matchedInstalled.push({ id: cat.id, name: `${cat.name} (${cat.size})` });
+    }
+  });
+
+  // Also include any other custom models the user has in Ollama
+  installedModelIds.forEach((installedName) => {
+    const alreadyMatched = matchedInstalled.some(
+      (m) => m.id.toLowerCase() === installedName.toLowerCase() || installedName.toLowerCase().startsWith(m.id.toLowerCase())
+    );
+    if (!alreadyMatched && !installedName.includes("whisper")) {
+      matchedInstalled.push({ id: installedName, name: `${installedName} (Local Model)` });
+    }
+  });
+
+  if (matchedInstalled.length > 0) {
+    matchedInstalled.forEach((m) => {
+      const opt = document.createElement("option");
+      opt.value = m.id;
+      opt.textContent = m.name;
+      llmModelSelect.appendChild(opt);
+    });
+  }
+
+  // Always include the Disabled option
+  const disabledOpt = document.createElement("option");
+  disabledOpt.value = "none";
+  disabledOpt.textContent = "Disabled (Verbatim Dictation Only)";
+  llmModelSelect.appendChild(disabledOpt);
+
+  // Preserve previous selection if still available, or pick the first available installed model
+  const options = Array.from(llmModelSelect.options).map((o) => o.value);
+  if (options.includes(previousValue)) {
+    llmModelSelect.value = previousValue;
+  } else if (matchedInstalled.length > 0) {
+    llmModelSelect.value = matchedInstalled[0].id;
+    currentConfig.llm_model = matchedInstalled[0].id;
+  } else {
+    llmModelSelect.value = "none";
+    currentConfig.llm_model = "none";
+  }
+}
+
+// Render the Models Catalog List in the Models Tab
+async function loadAndRenderModels() {
+  if (!modelsList) return;
+
+  await fetchInstalledModels();
+  syncLLMModelDropdown();
+
+  modelsList.innerHTML = "";
+
+  CATALOG_MODELS.forEach((model) => {
+    const isInstalled = installedModelIds.some((installedName) => {
+      const lower = installedName.toLowerCase();
+      const catLower = model.id.toLowerCase();
+      return lower === catLower || lower.startsWith(`${catLower}:`) || lower.replace(":latest", "") === catLower;
+    });
+
+    const isDownloading = downloadingModels.has(model.id);
+    const downloadInfo = downloadingModels.get(model.id);
+
+    const card = document.createElement("div");
+    card.className = "model-catalog-card";
+
+    let badgeClass = "available";
+    let badgeText = "Available to Download";
+    if (isDownloading) {
+      badgeClass = "downloading";
+      badgeText = "Downloading...";
+    } else if (isInstalled) {
+      badgeClass = "installed";
+      badgeText = "Installed & Active";
+    }
+
+    let progressHtml = "";
+    if (isDownloading && downloadInfo) {
+      let pct = 0;
+      if (downloadInfo.total && downloadInfo.total > 0 && downloadInfo.completed) {
+        pct = Math.round((downloadInfo.completed / downloadInfo.total) * 100);
+      }
+      progressHtml = `
+        <div style="font-size: 11.5px; color: var(--cyan-aether); margin-top: 4px;">
+          ${downloadInfo.status || "Downloading chunks..."} ${pct > 0 ? `(${pct}%)` : ""}
+        </div>
+        <div class="model-progress-bar-wrap">
+          <div class="model-progress-bar" style="width: ${Math.max(5, pct)}%"></div>
+        </div>
+      `;
+    }
+
+    card.innerHTML = `
+      <div class="model-catalog-info">
+        <div class="model-title-row">
+          <span class="model-catalog-name">${model.name}</span>
+          <span class="model-status-badge ${badgeClass}">${badgeText}</span>
+          ${model.recommended ? '<span style="font-size: 11px; background: rgba(37,99,235,0.2); color: #60a5fa; border: 1px solid rgba(37,99,235,0.3); padding: 1px 7px; border-radius: 10px; font-weight: 600;">Recommended</span>' : ''}
+        </div>
+        <div class="model-catalog-desc">${model.description}</div>
+        <div class="model-meta-row">
+          <div class="model-meta-item"><span>Size:</span> <strong>${model.size}</strong></div>
+          <div class="model-meta-item"><span>Parameters:</span> <strong>${model.parameters}</strong></div>
+          <div class="model-meta-item"><span>Category:</span> <strong>${model.category}</strong></div>
+        </div>
+        ${progressHtml}
+      </div>
+      <div class="model-actions-wrap">
+        ${
+          isDownloading
+            ? `<button class="model-btn-download" disabled>
+                 <span>⏳ Downloading...</span>
+               </button>`
+            : isInstalled
+            ? `<button class="model-btn-delete" data-model="${model.id}">
+                 <span>🗑 Delete Model</span>
+               </button>`
+            : `<button class="model-btn-download" data-model="${model.id}">
+                 <span>⬇ Download Model</span>
+               </button>`
+        }
+      </div>
+    `;
+
+    // Download action
+    const dlBtn = card.querySelector<HTMLButtonElement>(".model-btn-download");
+    if (dlBtn && !isDownloading && !isInstalled) {
+      dlBtn.addEventListener("click", async () => {
+        downloadingModels.set(model.id, { status: "Starting download..." });
+        loadAndRenderModels();
+
+        try {
+          await invoke("pull_llm_model", { model: model.id });
+          downloadingModels.delete(model.id);
+          await loadAndRenderModels();
+          saveConfigToBackend();
+        } catch (err) {
+          alert(`Download failed for ${model.name}: ${err}`);
+          downloadingModels.delete(model.id);
+          loadAndRenderModels();
+        }
+      });
+    }
+
+    // Delete action
+    const delBtn = card.querySelector<HTMLButtonElement>(".model-btn-delete");
+    if (delBtn) {
+      delBtn.addEventListener("click", async () => {
+        if (confirm(`Are you sure you want to remove "${model.name}" from your machine? This will free up ${model.size} disk space.`)) {
+          delBtn.disabled = true;
+          delBtn.textContent = "Deleting...";
+          try {
+            await invoke("delete_llm_model", { model: model.id });
+            if (currentConfig.llm_model === model.id) {
+              currentConfig.llm_model = "none";
+              saveConfigToBackend();
+            }
+            await loadAndRenderModels();
+          } catch (err) {
+            alert(`Failed to delete model: ${err}`);
+            delBtn.disabled = false;
+            delBtn.textContent = "🗑 Delete Model";
+          }
+        }
+      });
+    }
+
+    modelsList.appendChild(card);
+  });
 }
 
 // Compute and display REAL app usage on this device
@@ -157,6 +432,7 @@ function updateRealStats() {
     : 0;
 
   // Calculate Most Frequently Used Desktop App from real session tracking
+  // Cycles dynamically through all tracked apps, displaying precisely the top 5 most frequently used
   const appCounts: Record<string, number> = { ...(statsData.appUsage || {}) };
   historyData.forEach((item) => {
     if (item.app) {
@@ -165,10 +441,12 @@ function updateRealStats() {
   });
 
   const sortedApps = Object.entries(appCounts).sort((a, b) => b[1] - a[1]);
-  const totalTrackedSessions = sortedApps.reduce((acc, curr) => acc + curr[1], 0);
+  // Strictly display only the first 5 most frequently used apps
+  const topFiveApps = sortedApps.slice(0, 5);
+  const totalTrackedSessions = topFiveApps.reduce((acc, curr) => acc + curr[1], 0);
 
-  if (sortedApps.length > 0 && topAppName && topAppPercentage) {
-    const [topApp, count] = sortedApps[0];
+  if (topFiveApps.length > 0 && topAppName && topAppPercentage) {
+    const [topApp, count] = topFiveApps[0];
     const percentage = totalTrackedSessions > 0 ? Math.round((count / totalTrackedSessions) * 100) : 100;
     topAppName.textContent = topApp;
     topAppPercentage.textContent = `${percentage}% of dictation sessions (${count} total)`;
@@ -177,11 +455,11 @@ function updateRealStats() {
     topAppPercentage.textContent = "Primary desktop editor";
   }
 
-  // Render application breakdown list
+  // Render application breakdown list - exactly top 5 most used apps
   if (appBreakdownList) {
     appBreakdownList.innerHTML = "";
-    if (sortedApps.length > 0) {
-      sortedApps.slice(0, 5).forEach(([app, count]) => {
+    if (topFiveApps.length > 0) {
+      topFiveApps.forEach(([app, count]) => {
         const pct = totalTrackedSessions > 0 ? Math.round((count / totalTrackedSessions) * 100) : 100;
         const row = document.createElement("div");
         row.className = "app-row";
@@ -456,13 +734,20 @@ async function loadConfig() {
     }
   }
 
+  await fetchInstalledModels();
+  syncLLMModelDropdown();
+
   // Populate UI
   if (instructionsTextarea) instructionsTextarea.value = currentConfig.custom_instructions;
   if (hotkeySelect) hotkeySelect.value = currentConfig.hotkey;
   if (handsFreeHotkeySelect) handsFreeHotkeySelect.value = currentConfig.hands_free_hotkey || "F8";
   if (modeSelect) modeSelect.value = currentConfig.activation_mode;
   if (modelSelect) modelSelect.value = currentConfig.model_id;
-  if (llmModelSelect) llmModelSelect.value = currentConfig.llm_model || "gemma2:2b";
+  if (llmModelSelect) {
+    if (currentConfig.llm_model) {
+      llmModelSelect.value = currentConfig.llm_model;
+    }
+  }
   if (deepContextToggle) deepContextToggle.checked = currentConfig.deep_context ?? true;
   if (vadToggle) vadToggle.checked = currentConfig.vad_enabled;
   if (fillersToggle) fillersToggle.checked = currentConfig.strip_fillers;
@@ -482,6 +767,7 @@ async function loadConfig() {
   renderReplacements();
   renderHistory();
   updateRealStats();
+  loadAndRenderModels();
 }
 
 async function saveConfigToBackend() {
@@ -496,6 +782,41 @@ async function saveConfigToBackend() {
 // Initialize on DOM load
 window.addEventListener("DOMContentLoaded", async () => {
   await loadConfig();
+
+  // Listen for backend model pull progress events
+  try {
+    await listen<{ status?: string; completed?: number; total?: number }>("model-pull-progress", (event) => {
+      const payload = event.payload;
+      for (const [modelId, info] of downloadingModels.entries()) {
+        if (payload.status) info.status = payload.status;
+        if (payload.completed) info.completed = payload.completed;
+        if (payload.total) info.total = payload.total;
+        downloadingModels.set(modelId, info);
+      }
+      loadAndRenderModels();
+    });
+
+    await listen<{ model: string }>("model-pull-completed", async (event) => {
+      downloadingModels.delete(event.payload.model);
+      await loadAndRenderModels();
+      saveConfigToBackend();
+    });
+  } catch (err) {
+    console.debug("Model pull listener error:", err);
+  }
+
+  // Refresh Models button
+  refreshModelsBtn?.addEventListener("click", async () => {
+    refreshModelsBtn.disabled = true;
+    refreshModelsBtn.textContent = "Checking...";
+    await loadAndRenderModels();
+    setTimeout(() => {
+      if (refreshModelsBtn) {
+        refreshModelsBtn.disabled = false;
+        refreshModelsBtn.textContent = "↻ Refresh Local Status";
+      }
+    }, 600);
+  });
 
   // Listen for real-time dictation records from the capsule window
   window.addEventListener("storage", (e) => {
