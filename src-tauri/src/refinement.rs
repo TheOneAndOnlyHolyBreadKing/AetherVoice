@@ -251,6 +251,55 @@ pub fn apply_dictionary_and_replacements(text: &str, config: &AppConfig) -> Stri
     result.trim().to_string()
 }
 
+/// Robustly strips conversational AI boilerplate preambles and sign-offs (e.g. "Okay, here is the text...", "Let me know if...")
+pub fn clean_chatbot_boilerplate(text: &str) -> String {
+    let mut cleaned = text.trim().to_string();
+
+    // 1. Strip markdown code block wrappers
+    if cleaned.starts_with("```") {
+        if let Some(first_nl) = cleaned.find('\n') {
+            let inner = &cleaned[first_nl + 1..];
+            if inner.ends_with("```") {
+                cleaned = inner[..inner.len() - 3].trim().to_string();
+            } else {
+                cleaned = inner.trim().to_string();
+            }
+        }
+    }
+
+    // 2. Strip conversational preambles (e.g. "Okay, here is...", "Sure, here's...", "Here is the text with...")
+    static PREAMBLE_RE: OnceLock<Regex> = OnceLock::new();
+    let preamble_re = PREAMBLE_RE.get_or_init(|| {
+        Regex::new(r"(?i)^(?:(?:okay|ok|sure|certainly|here\s+is|here's|below\s+is|i've|i\s+have)[^\n\:\.\!]*[\:\.\!]\s*)+").unwrap()
+    });
+    cleaned = preamble_re.replace(&cleaned, "").trim().to_string();
+
+    // 3. Strip trailing conversational sign-offs (e.g. "Let me know if you need anything else!", "Hope this helps!", etc.)
+    static TRAILING_RE: OnceLock<Regex> = OnceLock::new();
+    let trailing_re = TRAILING_RE.get_or_init(|| {
+        Regex::new(r"(?i)(?:\n+|\s+)(?:let\s+me\s+know|hope\s+this\s+helps|feel\s+free|please\s+note|is\s+there\s+anything)[^\n]*[\.\!\?]?\s*$").unwrap()
+    });
+    cleaned = trailing_re.replace(&cleaned, "").trim().to_string();
+
+    // 4. Strip command prefixes echoed by model
+    if cleaned.to_lowercase().starts_with("rewrite spoken dictation:") {
+        cleaned = cleaned["rewrite spoken dictation:".len()..].trim().to_string();
+    } else if cleaned.to_lowercase().starts_with("rewrite dictation:") {
+        cleaned = cleaned["rewrite dictation:".len()..].trim().to_string();
+    } else if cleaned.to_lowercase().starts_with("transcribe and format:") {
+        cleaned = cleaned["transcribe and format:".len()..].trim().to_string();
+    }
+
+    // 5. Strip accidental enclosing quotes wrapped by model
+    if (cleaned.starts_with('"') && cleaned.ends_with('"') && cleaned.len() >= 2)
+        || (cleaned.starts_with('“') && cleaned.ends_with('”') && cleaned.len() >= 2)
+    {
+        cleaned = cleaned[1..cleaned.len() - 1].trim().to_string();
+    }
+
+    cleaned
+}
+
 /// Asynchronously invokes local Gemma 2 (via Ollama) with the user's custom instructions
 pub async fn refine_with_llm(raw: &str, config: &AppConfig) -> String {
     let chosen_model = config.llm_model.trim();
@@ -284,14 +333,15 @@ pub async fn refine_with_llm(raw: &str, config: &AppConfig) -> String {
     };
 
     let system_prompt = format!(
-        "You are the voice dictation editing and polishing engine of AetherVoice (like Aqua Voice).\n\
-        Your job is to transform raw, rambling spoken speech into clean, articulate, and well-structured written text according to the user's instructions.\n\n\
-        CRITICAL RULES:\n\
-        1. Speech-to-Text Polishing: Spoken speech is naturally wordy and repetitive. Strip out verbal crutches ('so basically', 'um', 'uh', 'like', 'you know') and rambling filler clauses. Rewrite the thoughts into crisp, professional, and natural written prose.\n\
-        2. First-Person Dictation Invariant: The user is speaking their thoughts or messages. Never converse, never advise, and never address the user as an assistant (e.g. never say 'Please provide...'). Keep the user's voice and perspective ('I need...', 'We need...').\n\
-        3. Meaning & Facts: Preserve all core requirements, facts, and intent completely intact.\n\
-        4. Lists & Steps: When items, steps, or sequences are spoken, structure them cleanly with bullet points (-) or numbers (1., 2., 3.).\n\
-        5. Output: Return ONLY the polished text ready to paste. No markdown codeblocks, no explanations.{}",
+        "You are the internal voice dictation processing engine of AetherVoice. You act like a keyboard transcription tool, NOT an AI chatbot.\n\
+        Your job is to transform raw, rambling spoken speech into clean, articulate written prose according to the user's instructions.\n\n\
+        CRITICAL INVARIANTS:\n\
+        1. NEVER TALK TO THE USER. You are NOT an AI assistant. Never output conversational remarks, preambles, or postambles (e.g. NEVER say 'Here is the text...', 'Sure', 'According to your settings', 'Let me know if you need anything else').\n\
+        2. FIRST-PERSON DICTATION PERSPECTIVE: Maintain the user's perspective ('I need...', 'We need...'). Never address the user as 'you' or give instructions to the user.\n\
+        3. SPEECH POLISHING: Remove speech crutches ('so basically', 'um', 'uh', 'like', 'you know') and rambling filler clauses. Rewrite repetitive speech into concise, articulate written prose.\n\
+        4. PRESERVE MEANING: Keep all core requirements, facts, and intent completely intact.\n\
+        5. LISTS & STEPS: If steps or items are dictated, structure them cleanly with numbers (1., 2., 3.) or bullet points (-).\n\
+        6. OUTPUT RULE: Output ONLY the final processed text ready to be pasted. No quotes, no intro, no comments.{}",
         custom_instruction_block
     );
 
@@ -311,7 +361,7 @@ pub async fn refine_with_llm(raw: &str, config: &AppConfig) -> String {
             },
             {
                 "role": "user",
-                "content": "Rewrite dictation: so basically what we want to do is make sure that the server restarts automatically whenever there is a crash so that our users don't see any downtime"
+                "content": "Rewrite spoken dictation: so basically what we want to do is make sure that the server restarts automatically whenever there is a crash so that our users don't see any downtime"
             },
             {
                 "role": "assistant",
@@ -319,7 +369,7 @@ pub async fn refine_with_llm(raw: &str, config: &AppConfig) -> String {
             },
             {
                 "role": "user",
-                "content": "Rewrite dictation: I am going to the store and this is my shopping list eggs grits watermelon sugar then after that I will come back and call you back"
+                "content": "Rewrite spoken dictation: I am going to the store and this is my shopping list eggs grits watermelon sugar then after that I will come back and call you back"
             },
             {
                 "role": "assistant",
@@ -327,7 +377,7 @@ pub async fn refine_with_llm(raw: &str, config: &AppConfig) -> String {
             },
             {
                 "role": "user",
-                "content": format!("Rewrite dictation: {}", raw)
+                "content": format!("Rewrite spoken dictation: {}", raw)
             }
         ],
         "stream": false,
@@ -345,38 +395,12 @@ pub async fn refine_with_llm(raw: &str, config: &AppConfig) -> String {
             if status.is_success() {
                 if let Ok(json_val) = resp.json::<serde_json::Value>().await {
                     if let Some(content) = json_val["message"]["content"].as_str() {
-                        let cleaned = content.trim();
-                        // Strip markdown code block wrappers if model wrapped response in ``` or ```markdown
-                        let stripped = if cleaned.starts_with("```") {
-                            if let Some(first_newline) = cleaned.find('\n') {
-                                let inner = &cleaned[first_newline + 1..];
-                                if inner.ends_with("```") {
-                                    inner[..inner.len() - 3].trim()
-                                } else {
-                                    inner.trim()
-                                }
-                            } else {
-                                cleaned
-                            }
-                        } else {
-                            cleaned
-                        };
-
-                        // Strip leading command prefixes or surrounding quotes if echoed
-                        let mut final_text = stripped.trim();
-                        if final_text.to_lowercase().starts_with("rewrite dictation:") {
-                            final_text = final_text["rewrite dictation:".len()..].trim();
-                        } else if final_text.to_lowercase().starts_with("transcribe and format:") {
-                            final_text = final_text["transcribe and format:".len()..].trim();
-                        }
-                        if final_text.starts_with('"') && final_text.ends_with('"') && final_text.len() >= 2 {
-                            final_text = final_text[1..final_text.len() - 1].trim();
-                        }
+                        let final_text = clean_chatbot_boilerplate(content);
 
                         if !final_text.is_empty() {
                             println!("[AetherVoice] Local LLM rephrased: '{}'", final_text);
                             // Apply dictionary casing and user replacements without mangling LLM's list formatting
-                            return apply_dictionary_and_replacements(final_text, config);
+                            return apply_dictionary_and_replacements(&final_text, config);
                         }
                     }
                 }
