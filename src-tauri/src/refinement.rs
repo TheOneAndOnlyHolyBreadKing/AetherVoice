@@ -35,9 +35,26 @@ pub struct AppConfig {
     pub vad_enabled: bool,
     pub strip_fillers: bool,
     pub spoken_punctuation: bool,
+    #[serde(default = "default_auto_capitalize")]
     pub auto_capitalize: bool,
     pub dictionary: Vec<String>,
     pub replacements: Vec<ReplacementItem>,
+    #[serde(default = "default_deep_context")]
+    pub deep_context: bool,
+    #[serde(default = "default_hands_free_hotkey")]
+    pub hands_free_hotkey: String,
+}
+
+fn default_auto_capitalize() -> bool {
+    true
+}
+
+fn default_deep_context() -> bool {
+    true
+}
+
+fn default_hands_free_hotkey() -> String {
+    "F8".to_string()
 }
 
 fn default_llm_model() -> String {
@@ -93,6 +110,8 @@ Act as an intelligent, high-fidelity voice dictation assistant. Transform spoken
                     replacement: "😊".to_string(),
                 },
             ],
+            deep_context: true,
+            hands_free_hotkey: "F8".to_string(),
         }
     }
 }
@@ -312,8 +331,8 @@ pub fn clean_chatbot_boilerplate(text: &str) -> String {
     cleaned
 }
 
-/// Asynchronously invokes local Gemma 2 (via Ollama) with the user's custom instructions
-pub async fn refine_with_llm(raw: &str, config: &AppConfig) -> String {
+/// Asynchronously invokes local Gemma 2 (via Ollama) with the user's custom instructions and optional screen context
+pub async fn refine_with_llm(raw: &str, config: &AppConfig, screen_context: Option<&str>) -> String {
     let chosen_model = config.llm_model.trim();
     if chosen_model == "none" || chosen_model == "disabled" {
         return refine_text_with_config(raw, config);
@@ -344,6 +363,24 @@ pub async fn refine_with_llm(raw: &str, config: &AppConfig) -> String {
         String::new()
     };
 
+    let deep_context_block = if config.deep_context {
+        if let Some(ctx) = screen_context {
+            if !ctx.trim().is_empty() {
+                format!(
+                    "\nACTIVE APPLICATION & SCREEN CONTEXT (BOOST ACCURACY):\n\"\"\"\n{}\n\"\"\"\n\
+                    Use this active window and application context to accurately transcribe specialized terms, technical identifiers, variables, or software jargon relevant to what the user is working on.\n",
+                    ctx.trim()
+                )
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        }
+    } else {
+        String::new()
+    };
+
     let system_prompt = format!(
         "You are the internal voice dictation processing engine of AetherVoice. You act like a keyboard transcription tool, NOT an AI chatbot.\n\
         Your job is to transform raw, rambling spoken speech into clean, articulate written prose according to the user's instructions.\n\n\
@@ -353,8 +390,9 @@ pub async fn refine_with_llm(raw: &str, config: &AppConfig) -> String {
         3. SPEECH POLISHING: Remove speech crutches ('so basically', 'um', 'uh', 'like', 'you know') and rambling filler clauses. Rewrite repetitive speech into concise, articulate written prose.\n\
         4. PRESERVE MEANING: Keep all core requirements, facts, and intent completely intact.\n\
         5. LISTS & STEPS: If steps or items are dictated, structure them cleanly with numbers (1., 2., 3.) or bullet points (-).\n\
-        6. OUTPUT RULE: Output ONLY the final processed text ready to be pasted. No quotes, no intro, no comments.{}",
-        custom_instruction_block
+        6. OUTPUT RULE: Output ONLY the final processed text ready to be pasted. No quotes, no intro, no comments.{}{}",
+        custom_instruction_block,
+        deep_context_block
     );
 
     println!(

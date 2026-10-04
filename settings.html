@@ -184,6 +184,22 @@
 
             <div class="setting-card">
               <div class="setting-info">
+                <label class="setting-label">Hands-Free Mode Shortcut (Toggle)</label>
+                <div class="setting-desc">Press once to start dictating hands-free without holding down any key. Press again to finish.</div>
+              </div>
+              <div class="setting-control">
+                <select id="hands-free-hotkey-select" class="form-select">
+                  <option value="F8">F8 Key (Recommended)</option>
+                  <option value="AltLeft">Left Alt</option>
+                  <option value="Ctrl+Space">Ctrl + Space</option>
+                  <option value="AltRight">Right Alt</option>
+                  <option value="None">None (Disabled)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="setting-card">
+              <div class="setting-info">
                 <label class="setting-label">Dictation Activation Mode</label>
                 <div class="setting-desc">Hold to dictate like a walkie-talkie, or tap to toggle recording on/off.</div>
               </div>
@@ -221,6 +237,16 @@
                   <option value="qwen2.5:1.5b">Qwen 2.5 1.5B (Code & Technical)</option>
                   <option value="none">Disabled (Verbatim Dictation Only)</option>
                 </select>
+              </div>
+            </div>
+
+            <div class="setting-card">
+              <div class="setting-info">
+                <label class="setting-label">Deep Context (Active Screen Awareness)</label>
+                <div class="setting-desc">Uses context from your active screen and window to boost accuracy for specialized jargon, code identifiers, and app-specific terms.</div>
+              </div>
+              <div class="setting-control">
+                <input type="checkbox" id="deep-context-toggle" class="form-checkbox" checked />
               </div>
             </div>
 

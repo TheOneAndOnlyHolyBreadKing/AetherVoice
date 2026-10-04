@@ -21,6 +21,8 @@ interface AppConfig {
   echo_cancellation: boolean;
   dictionary: string[];
   replacements: ReplacementItem[];
+  deep_context?: boolean;
+  hands_free_hotkey?: string;
 }
 
 const DEFAULT_INSTRUCTIONS = `# Persona
@@ -50,7 +52,9 @@ let currentConfig: AppConfig = {
     { spoken: "my email", replacement: "dev@example.com" },
     { spoken: "k eight s", replacement: "k8s" },
     { spoken: "smile emoji", replacement: "😊" }
-  ]
+  ],
+  deep_context: true,
+  hands_free_hotkey: "F8"
 };
 
 // DOM Elements
@@ -70,9 +74,11 @@ const noiseToggle = document.getElementById("noise-toggle") as HTMLInputElement;
 const echoToggle = document.getElementById("echo-toggle") as HTMLInputElement;
 
 const hotkeySelect = document.getElementById("hotkey-select") as HTMLSelectElement;
+const handsFreeHotkeySelect = document.getElementById("hands-free-hotkey-select") as HTMLSelectElement | null;
 const modeSelect = document.getElementById("mode-select") as HTMLSelectElement;
 const modelSelect = document.getElementById("model-select") as HTMLSelectElement;
 const llmModelSelect = document.getElementById("llm-model-select") as HTMLSelectElement | null;
+const deepContextToggle = document.getElementById("deep-context-toggle") as HTMLInputElement | null;
 const vadToggle = document.getElementById("vad-toggle") as HTMLInputElement;
 const fillersToggle = document.getElementById("fillers-toggle") as HTMLInputElement;
 const punctuationToggle = document.getElementById("punctuation-toggle") as HTMLInputElement;
@@ -453,9 +459,11 @@ async function loadConfig() {
   // Populate UI
   if (instructionsTextarea) instructionsTextarea.value = currentConfig.custom_instructions;
   if (hotkeySelect) hotkeySelect.value = currentConfig.hotkey;
+  if (handsFreeHotkeySelect) handsFreeHotkeySelect.value = currentConfig.hands_free_hotkey || "F8";
   if (modeSelect) modeSelect.value = currentConfig.activation_mode;
   if (modelSelect) modelSelect.value = currentConfig.model_id;
   if (llmModelSelect) llmModelSelect.value = currentConfig.llm_model || "gemma2:2b";
+  if (deepContextToggle) deepContextToggle.checked = currentConfig.deep_context ?? true;
   if (vadToggle) vadToggle.checked = currentConfig.vad_enabled;
   if (fillersToggle) fillersToggle.checked = currentConfig.strip_fillers;
   if (punctuationToggle) punctuationToggle.checked = currentConfig.spoken_punctuation;
@@ -537,9 +545,11 @@ window.addEventListener("DOMContentLoaded", async () => {
     currentConfig.echo_cancellation = echoToggle ? echoToggle.checked : true;
 
     currentConfig.hotkey = hotkeySelect.value;
+    if (handsFreeHotkeySelect) currentConfig.hands_free_hotkey = handsFreeHotkeySelect.value;
     currentConfig.activation_mode = modeSelect.value;
     currentConfig.model_id = modelSelect.value;
     if (llmModelSelect) currentConfig.llm_model = llmModelSelect.value;
+    if (deepContextToggle) currentConfig.deep_context = deepContextToggle.checked;
     currentConfig.vad_enabled = vadToggle.checked;
     currentConfig.strip_fillers = fillersToggle.checked;
     currentConfig.spoken_punctuation = punctuationToggle.checked;

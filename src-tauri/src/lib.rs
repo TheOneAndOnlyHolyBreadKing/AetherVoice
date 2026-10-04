@@ -225,7 +225,18 @@ async fn stop_dictation(state: State<'_, AppState>, app: AppHandle) -> Result<St
         lock.clone()
     };
 
-    let cleaned_text = refine_with_llm(&raw_text, &config).await;
+    let screen_context = if config.deep_context {
+        let (app_name, title) = get_foreground_context();
+        if !title.is_empty() {
+            Some(format!("Active Application: {}\nWindow Title: {}", app_name, title))
+        } else {
+            Some(format!("Active Application: {}", app_name))
+        }
+    } else {
+        None
+    };
+
+    let cleaned_text = refine_with_llm(&raw_text, &config, screen_context.as_deref()).await;
 
     if !cleaned_text.is_empty() {
         if let Err(e) = inject_text(&cleaned_text) {
@@ -271,8 +282,7 @@ fn get_audio_level(state: State<'_, AppState>) -> f32 {
     0.0
 }
 
-#[tauri::command]
-fn get_active_app() -> String {
+fn get_foreground_context() -> (String, String) {
     #[cfg(windows)]
     unsafe {
         use windows_sys::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowTextW};
@@ -281,14 +291,14 @@ fn get_active_app() -> String {
 
         let hwnd = GetForegroundWindow();
         if hwnd.is_null() {
-            return "Desktop".to_string();
+            return ("Desktop".to_string(), String::new());
         }
 
         // Try getting window title
         let mut title_buf = [0u16; 512];
         let len = GetWindowTextW(hwnd, title_buf.as_mut_ptr(), 512);
         let title = if len > 0 {
-            String::from_utf16_lossy(&title_buf[..len as usize])
+            String::from_utf16_lossy(&title_buf[..len as usize]).trim().to_string()
         } else {
             String::new()
         };
@@ -296,6 +306,7 @@ fn get_active_app() -> String {
         // Try getting process executable name
         let mut process_id = 0u32;
         windows_sys::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId(hwnd, &mut process_id);
+        let mut app_name = String::new();
         if process_id > 0 {
             let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, process_id);
             if !handle.is_null() {
@@ -306,36 +317,49 @@ fn get_active_app() -> String {
                     let full_path = String::from_utf16_lossy(&img_buf[..img_len as usize]);
                     if let Some(filename) = full_path.split('\\').last() {
                         let lower = filename.to_lowercase();
-                        if lower.contains("code") { return "VS Code".to_string(); }
-                        if lower.contains("chrome") { return "Google Chrome".to_string(); }
-                        if lower.contains("msedge") { return "Microsoft Edge".to_string(); }
-                        if lower.contains("firefox") { return "Mozilla Firefox".to_string(); }
-                        if lower.contains("slack") { return "Slack".to_string(); }
-                        if lower.contains("discord") { return "Discord".to_string(); }
-                        if lower.contains("notepad") { return "Notepad".to_string(); }
-                        if lower.contains("cursor") { return "Cursor".to_string(); }
-                        if lower.contains("windsurf") { return "Windsurf".to_string(); }
-                        if lower.contains("antigravity") { return "Antigravity IDE".to_string(); }
-                        if lower.contains("word") { return "Microsoft Word".to_string(); }
-                        if lower.contains("teams") { return "Microsoft Teams".to_string(); }
-                        if lower.contains("obsidian") { return "Obsidian".to_string(); }
-                        return filename.replace(".exe", "");
+                        app_name = if lower.contains("code") { "VS Code".to_string() }
+                        else if lower.contains("chrome") { "Google Chrome".to_string() }
+                        else if lower.contains("msedge") { "Microsoft Edge".to_string() }
+                        else if lower.contains("firefox") { "Mozilla Firefox".to_string() }
+                        else if lower.contains("slack") { "Slack".to_string() }
+                        else if lower.contains("discord") { "Discord".to_string() }
+                        else if lower.contains("notepad") { "Notepad".to_string() }
+                        else if lower.contains("cursor") { "Cursor".to_string() }
+                        else if lower.contains("windsurf") { "Windsurf".to_string() }
+                        else if lower.contains("antigravity") { "Antigravity IDE".to_string() }
+                        else if lower.contains("word") { "Microsoft Word".to_string() }
+                        else if lower.contains("teams") { "Microsoft Teams".to_string() }
+                        else if lower.contains("obsidian") { "Obsidian".to_string() }
+                        else { filename.replace(".exe", "") };
                     }
                 }
             }
         }
 
-        if !title.is_empty() {
+        if app_name.is_empty() && !title.is_empty() {
             let title_lower = title.to_lowercase();
-            if title_lower.contains("chrome") { return "Google Chrome".to_string(); }
-            if title_lower.contains("edge") { return "Microsoft Edge".to_string(); }
-            if title_lower.contains("visual studio code") || title_lower.contains("code") { return "VS Code".to_string(); }
-            if title_lower.contains("slack") { return "Slack".to_string(); }
-            if title_lower.contains("discord") { return "Discord".to_string(); }
-            return title;
+            app_name = if title_lower.contains("chrome") { "Google Chrome".to_string() }
+            else if title_lower.contains("edge") { "Microsoft Edge".to_string() }
+            else if title_lower.contains("visual studio code") || title_lower.contains("code") { "VS Code".to_string() }
+            else if title_lower.contains("slack") { "Slack".to_string() }
+            else if title_lower.contains("discord") { "Discord".to_string() }
+            else { title.clone() };
         }
+
+        if app_name.is_empty() {
+            app_name = "Desktop".to_string();
+        }
+
+        return (app_name, title);
     }
-    "Desktop".to_string()
+    #[cfg(not(windows))]
+    ("Desktop".to_string(), String::new())
+}
+
+#[tauri::command]
+fn get_active_app() -> String {
+    let (app, _) = get_foreground_context();
+    app
 }
 
 #[cfg(windows)]
@@ -346,45 +370,65 @@ fn spawn_global_hotkey_listener(app: AppHandle) {
     };
 
     static IS_KEY_DOWN: AtomicBool = AtomicBool::new(false);
+    static IS_HANDS_FREE_DOWN: AtomicBool = AtomicBool::new(false);
 
     std::thread::spawn(move || {
         loop {
             std::thread::sleep(std::time::Duration::from_millis(15));
 
-            let (hotkey, mode) = {
+            let (hotkey, mode, hands_free_key) = {
                 if let Some(state) = app.try_state::<AppState>() {
                     if let Ok(conf) = state.config.read() {
-                        (conf.hotkey.clone(), conf.activation_mode.clone())
+                        (conf.hotkey.clone(), conf.activation_mode.clone(), conf.hands_free_hotkey.clone())
                     } else {
-                        ("AltRight".to_string(), "push-to-talk".to_string())
+                        ("AltRight".to_string(), "push-to-talk".to_string(), "F8".to_string())
                     }
                 } else {
-                    ("AltRight".to_string(), "push-to-talk".to_string())
+                    ("AltRight".to_string(), "push-to-talk".to_string(), "F8".to_string())
                 }
             };
 
-            let pressed = unsafe {
-                match hotkey.as_str() {
-                    "AltRight" => (GetAsyncKeyState(VK_RMENU as i32) as u16 & 0x8000) != 0,
-                    "AltLeft" => (GetAsyncKeyState(VK_LMENU as i32) as u16 & 0x8000) != 0,
-                    "F8" => (GetAsyncKeyState(VK_F8 as i32) as u16 & 0x8000) != 0,
-                    "Ctrl+Space" => {
-                        let ctrl = (GetAsyncKeyState(VK_CONTROL as i32) as u16 & 0x8000) != 0;
-                        let space = (GetAsyncKeyState(VK_SPACE as i32) as u16 & 0x8000) != 0;
-                        ctrl && space
+            let check_key = |key_str: &str| -> bool {
+                unsafe {
+                    match key_str {
+                        "AltRight" => (GetAsyncKeyState(VK_RMENU as i32) as u16 & 0x8000) != 0,
+                        "AltLeft" => (GetAsyncKeyState(VK_LMENU as i32) as u16 & 0x8000) != 0,
+                        "F8" => (GetAsyncKeyState(VK_F8 as i32) as u16 & 0x8000) != 0,
+                        "Ctrl+Space" => {
+                            let ctrl = (GetAsyncKeyState(VK_CONTROL as i32) as u16 & 0x8000) != 0;
+                            let space = (GetAsyncKeyState(VK_SPACE as i32) as u16 & 0x8000) != 0;
+                            ctrl && space
+                        }
+                        "None" => false,
+                        _ => false,
                     }
-                    _ => (GetAsyncKeyState(VK_RMENU as i32) as u16 & 0x8000) != 0,
                 }
             };
 
-            let was_down = IS_KEY_DOWN.load(Ordering::Relaxed);
+            // 1. Check primary hotkey
+            let primary_pressed = check_key(&hotkey);
+            let was_primary_down = IS_KEY_DOWN.load(Ordering::Relaxed);
 
-            if pressed && !was_down {
+            if primary_pressed && !was_primary_down {
                 IS_KEY_DOWN.store(true, Ordering::Relaxed);
                 let _ = app.emit("global-hotkey-event", serde_json::json!({ "action": "press", "mode": mode }));
-            } else if !pressed && was_down {
+            } else if !primary_pressed && was_primary_down {
                 IS_KEY_DOWN.store(false, Ordering::Relaxed);
                 let _ = app.emit("global-hotkey-event", serde_json::json!({ "action": "release", "mode": mode }));
+            }
+
+            // 2. Check dedicated hands-free toggle hotkey
+            if !hands_free_key.is_empty() && hands_free_key != "None" && hands_free_key != hotkey {
+                let hf_pressed = check_key(&hands_free_key);
+                let was_hf_down = IS_HANDS_FREE_DOWN.load(Ordering::Relaxed);
+
+                if hf_pressed && !was_hf_down {
+                    IS_HANDS_FREE_DOWN.store(true, Ordering::Relaxed);
+                    // Emit toggle press event
+                    let _ = app.emit("global-hotkey-event", serde_json::json!({ "action": "press", "mode": "toggle" }));
+                } else if !hf_pressed && was_hf_down {
+                    IS_HANDS_FREE_DOWN.store(false, Ordering::Relaxed);
+                }
             }
         }
     });
