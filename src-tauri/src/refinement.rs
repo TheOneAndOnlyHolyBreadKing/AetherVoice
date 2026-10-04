@@ -226,19 +226,7 @@ pub fn refine_text_with_config(raw: &str, config: &AppConfig) -> String {
         return final_candidate.trim().to_lowercase();
     }
 
-    // Bullet points directive
-    if instructions_lower.contains("bullet") || (instructions_lower.contains("list") && !final_candidate.contains('\n')) {
-        let lines: Vec<&str> = final_candidate.split(|c| c == '\n' || c == '.').collect();
-        let bulleted: Vec<String> = lines
-            .into_iter()
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty())
-            .map(|s| format!("• {}", capitalize_sentences(s)))
-            .collect();
-        if !bulleted.is_empty() {
-            return bulleted.join("\n");
-        }
-    }
+
 
     // 9. Auto-capitalize sentences if enabled
     if config.auto_capitalize {
@@ -389,7 +377,7 @@ pub async fn refine_with_llm(raw: &str, config: &AppConfig, screen_context: Opti
         2. FIRST-PERSON DICTATION PERSPECTIVE: Maintain the user's perspective ('I need...', 'We need...'). Never address the user as 'you' or give instructions to the user.\n\
         3. SPEECH POLISHING: Remove speech crutches ('so basically', 'um', 'uh', 'like', 'you know') and rambling filler clauses. Rewrite repetitive speech into concise, articulate written prose.\n\
         4. PRESERVE MEANING: Keep all core requirements, facts, and intent completely intact.\n\
-        5. LISTS & STEPS: If steps or items are dictated, structure them cleanly with numbers (1., 2., 3.) or bullet points (-).\n\
+        5. INTELLIGENT STRUCTURING: Do not turn ordinary paragraphs into bullet points unless the user clearly dictates a list, sequence of items, or specific bullet points. Let natural sentences flow as coherent, well-structured paragraphs, while structuring actual items/steps with clean numbering or bullet points.\n\
         6. OUTPUT RULE: Output ONLY the final processed text ready to be pasted. No quotes, no intro, no comments.{}{}",
         custom_instruction_block,
         deep_context_block

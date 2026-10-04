@@ -500,6 +500,100 @@ async function loadAndRenderModels() {
 
     modelsList.appendChild(card);
   });
+
+  // Also render any installed custom models found on Ollama that aren't in the official catalog
+  installedModelIds.forEach((installedName) => {
+    const isMatchedInCatalog = CATALOG_MODELS.some((m) => {
+      const lower = installedName.toLowerCase();
+      const catLower = m.id.toLowerCase();
+      return lower === catLower || lower.startsWith(`${catLower}:`) || lower.replace(":latest", "") === catLower;
+    });
+
+    if (!isMatchedInCatalog && !installedName.toLowerCase().includes("whisper")) {
+      const customItem: ModelCatalogItem = {
+        id: installedName,
+        name: installedName.replace(":latest", ""),
+        size: "Local Model",
+        parameters: "Local Weights",
+        description: "Installed on your local machine via Ollama.",
+        category: "Custom / Local",
+        accuracy: 90,
+        speed: 85,
+        language: "Multilingual"
+      };
+
+      const customCard = document.createElement("div");
+      customCard.className = "model-catalog-card";
+      customCard.innerHTML = `
+        <div class="model-info-block">
+          <div class="model-header-line">
+            <span class="model-name">${customItem.name}</span>
+            <span class="model-status-badge installed">Installed on Device</span>
+          </div>
+          <p class="model-desc">${customItem.description}</p>
+          <div class="model-meta-row">
+            <div class="model-meta-item">
+              <span>🏷 Custom Local Model</span>
+            </div>
+            <div class="model-meta-item">
+              <span>Ollama ID: ${installedName}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="model-side-metrics">
+          <div class="model-meter-container">
+            <div class="model-meter-row" title="${customItem.accuracy}% instruction & formatting fidelity">
+              <span class="model-meter-label">accuracy</span>
+              <div class="model-meter-bar-track">
+                <div class="model-meter-bar-fill" style="width: ${customItem.accuracy}%"></div>
+              </div>
+              <span class="model-meter-val">${customItem.accuracy}%</span>
+            </div>
+            <div class="model-meter-row" title="${customItem.speed}% throughput efficiency">
+              <span class="model-meter-label">speed</span>
+              <div class="model-meter-bar-track">
+                <div class="model-meter-bar-fill" style="width: ${customItem.speed}%"></div>
+              </div>
+              <span class="model-meter-val">${customItem.speed}%</span>
+            </div>
+          </div>
+
+          <div class="model-action-footer">
+            <div class="model-size-badge">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+                <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+                <line x1="6" y1="6" x2="6.01" y2="6"></line>
+                <line x1="6" y1="18" x2="6.01" y2="18"></line>
+              </svg>
+              <span>Local</span>
+            </div>
+
+            <div class="model-actions-wrap">
+              <button class="model-btn-delete" data-model="${customItem.id}">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M3 6h18"></path>
+                  <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                  <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                </svg>
+                <span>Delete</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+
+      const delBtn = customCard.querySelector<HTMLButtonElement>(".model-btn-delete");
+      if (delBtn) {
+        delBtn.addEventListener("click", () => {
+          openDeleteConfirmModal(customItem);
+        });
+      }
+
+      modelsList.appendChild(customCard);
+    }
+  });
 }
 
 // --------------------------------------------------------------------------
