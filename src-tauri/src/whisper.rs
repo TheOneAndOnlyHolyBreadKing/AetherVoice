@@ -87,7 +87,41 @@ impl WhisperEngine {
         };
         println!("[WhisperEngine] Launching whisper daemon with model '{}': {:?}", model, script_path);
 
-        let mut cmd = Command::new("python");
+        let mut py_binary = "python";
+        // Check if python or py launcher exists
+        if Command::new("python").arg("--version").output().is_err() {
+            if Command::new("py").arg("--version").output().is_ok() {
+                py_binary = "py";
+            }
+        }
+
+        // Verify if whisper package is installed; if not, attempt quick self-heal pip install
+        let whisper_check = Command::new(py_binary)
+            .args(&["-c", "import whisper"])
+            .output();
+
+        if let Ok(check_out) = whisper_check {
+            if !check_out.status.success() {
+                println!("[WhisperEngine] Whisper not found in Python environment. Auto-installing prerequisites...");
+                #[cfg(windows)]
+                {
+                    use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONINFORMATION, MB_OK, MB_SYSTEMMODAL};
+                    let title: Vec<u16> = "AetherVoice - One-Time Setup\0".encode_utf16().collect();
+                    let message: Vec<u16> = "AetherVoice is preparing the Whisper speech engine on your system.\n\nInstalling openai-whisper and PyTorch in the background now. Please wait a moment...\0"
+                        .encode_utf16()
+                        .collect();
+                    unsafe {
+                        MessageBoxW(core::ptr::null_mut(), message.as_ptr(), title.as_ptr(), MB_OK | MB_ICONINFORMATION | MB_SYSTEMMODAL);
+                    }
+                }
+
+                let _ = Command::new(py_binary)
+                    .args(&["-m", "pip", "install", "openai-whisper", "torch", "torchaudio", "sounddevice", "numpy"])
+                    .status();
+            }
+        }
+
+        let mut cmd = Command::new(py_binary);
         cmd.arg(&script_path)
             .arg(&model)
             .stdin(Stdio::piped())

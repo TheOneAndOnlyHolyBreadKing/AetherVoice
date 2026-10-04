@@ -48,7 +48,8 @@ graph TD
 
 ## 5. Verified Working Capabilities (Proven State)
 - **Single-Instance Enforcement**: Verified via Win32 `CreateMutexW` and `GetLastError() == ERROR_ALREADY_EXISTS`. Triggers native modal alert `MessageBoxW` and clean shutdown when launched multiple times.
-- **Automated Setup Prerequisites**: Integrated into NSIS setup installer bundle (`AetherVoice_0.1.0_x64-setup.exe`), inspecting/installing Python, PyTorch, Whisper, and Ollama.
+- **Automated Setup Prerequisites**: Integrated into NSIS setup installer bundle (`AetherVoice_0.1.0_x64-setup.exe`), inspecting/installing Python, PyTorch, Whisper, and Ollama with a visible progress window during installation.
+- **In-App Self-Healing Whisper Engine**: If a user runs without prerequisites pre-installed, AetherVoice detects the missing `whisper` module, informs the user with a modal notice, and automatically runs `pip install` in the background with `py` and `python` launcher fallbacks.
 - **Whisper Server Resolution**: Auto-locates `whisper_server.py` from executable root or resources bundle directory.
 - **Standalone Setup EXE Generation**: Compiled release installer located at `src-tauri/target/release/bundle/nsis/AetherVoice_0.1.0_x64-setup.exe`.
 
@@ -57,7 +58,8 @@ graph TD
 ## 6. Load-Bearing Decisions & Gotchas Resolved
 - **Windows-sys 0.59.0 Feature Requirements**: `CreateMutexW` requires the `Win32_Security` and `Win32_Foundation` features in `Cargo.toml`.
 - **MessageBoxW Null Mutability**: Win32 `MessageBoxW` expects a mutable pointer for `HWND` (`core::ptr::null_mut()`).
-- **Resource Bundling for Tauri v2**: Added `whisper_server.py` to `tauri.conf.json` bundle resources to ensure the production NSIS package includes the transcription script.
+- **Visible NSIS Prerequisite Execution**: Replaced silent background execution in NSIS with `ExecWait` console execution so users see active pip/winget progress rather than failing silently.
+- **Python / Py Launcher Fallback**: Added fallback checking for both `python` and `py` commands on Windows to support all Python installation variations.
 
 ---
 
