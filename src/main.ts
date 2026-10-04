@@ -109,8 +109,10 @@ function recordSessionStats(text: string, durationSec: number, targetApp: string
       app: targetApp
     });
 
-    // Keep last 100 entries
-    if (history.length > 100) history.pop();
+    // Automatically retain only the 5 most recent entries
+    if (history.length > 5) {
+      history.length = 5;
+    }
     localStorage.setItem("aethervoice_history", JSON.stringify(history));
 
     // Also persist directly to app_data_dir via Tauri backend

@@ -102,7 +102,11 @@ fn get_dictation_history(app: AppHandle) -> Result<Vec<HistoryItem>, String> {
 }
 
 #[tauri::command]
-fn save_dictation_history(app: AppHandle, history: Vec<HistoryItem>) -> Result<(), String> {
+fn save_dictation_history(app: AppHandle, mut history: Vec<HistoryItem>) -> Result<(), String> {
+    // Automatically enforce that only the 5 most recent entries are ever kept
+    if history.len() > 5 {
+        history.truncate(5);
+    }
     let path = get_history_path(&app)?;
     let serialized = serde_json::to_string_pretty(&history).map_err(|e| e.to_string())?;
     std::fs::write(&path, serialized).map_err(|e| e.to_string())?;
