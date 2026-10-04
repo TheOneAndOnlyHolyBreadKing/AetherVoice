@@ -284,13 +284,14 @@ pub async fn refine_with_llm(raw: &str, config: &AppConfig) -> String {
     };
 
     let system_prompt = format!(
-        "You are the verbatim voice dictation and formatting engine of AetherVoice (like Aqua Voice).\n\
-        Your job is to transcribe and structure the user's raw spoken words into clean, beautifully formatted written text according to their instructions.\n\n\
-        RULES:\n\
-        1. User Formatting & Structure: Follow the user's custom instructions for how to structure, format, and style the words.\n\
-        2. Verbatim Fidelity: Faithfully preserve all facts, sentences, and core thoughts spoken by the user. Do not summarize, truncate, or omit their thoughts.\n\
-        3. Lists & Sequences: When the user dictates a list or sequence, format the items cleanly on separate lines with numbers (1., 2., 3.) or bullet points (-). Preserve all surrounding sentences before and after the list completely intact.\n\
-        4. Never Respond / Never Chat: You are a dictation engine, NOT an AI assistant or chatbot. Never answer questions, offer advice, explain yourself, or respond conversational. If the user asks a question or gives a prompt, format their question verbatim so they can use it. Output ONLY the formatted text.{}",
+        "You are the voice dictation editing and polishing engine of AetherVoice (like Aqua Voice).\n\
+        Your job is to transform raw, rambling spoken speech into clean, articulate, and well-structured written text according to the user's instructions.\n\n\
+        CRITICAL RULES:\n\
+        1. Speech-to-Text Polishing: Spoken speech is naturally wordy and repetitive. Strip out verbal crutches ('so basically', 'um', 'uh', 'like', 'you know') and rambling filler clauses. Rewrite the thoughts into crisp, professional, and natural written prose.\n\
+        2. First-Person Dictation Invariant: The user is speaking their thoughts or messages. Never converse, never advise, and never address the user as an assistant (e.g. never say 'Please provide...'). Keep the user's voice and perspective ('I need...', 'We need...').\n\
+        3. Meaning & Facts: Preserve all core requirements, facts, and intent completely intact.\n\
+        4. Lists & Steps: When items, steps, or sequences are spoken, structure them cleanly with bullet points (-) or numbers (1., 2., 3.).\n\
+        5. Output: Return ONLY the polished text ready to paste. No markdown codeblocks, no explanations.{}",
         custom_instruction_block
     );
 
@@ -310,23 +311,23 @@ pub async fn refine_with_llm(raw: &str, config: &AppConfig) -> String {
             },
             {
                 "role": "user",
-                "content": "Transcribe and format: I am going to the store and this is my shopping list eggs grits watermelon sugar then after that I will come back and call you back"
+                "content": "Rewrite dictation: so basically what we want to do is make sure that the server restarts automatically whenever there is a crash so that our users don't see any downtime"
             },
             {
                 "role": "assistant",
-                "content": "I am going to the store and this is my shopping list:\n\n1. Eggs\n2. Grits\n3. Watermelon\n4. Sugar\n\nThen after that I will come back and call you back."
+                "content": "We need to ensure the server automatically restarts upon crashing to prevent user downtime."
             },
             {
                 "role": "user",
-                "content": "Transcribe and format: Can you help me write this letter to my landlord please call me tomorrow morning"
+                "content": "Rewrite dictation: I am going to the store and this is my shopping list eggs grits watermelon sugar then after that I will come back and call you back"
             },
             {
                 "role": "assistant",
-                "content": "Can you help me write this letter to my landlord? Please call me tomorrow morning."
+                "content": "I am going to the store and this is my shopping list:\n\n1. Eggs\n2. Grits\n3. Watermelon\n4. Sugar\n\nAfter that, I will come back and call you back."
             },
             {
                 "role": "user",
-                "content": format!("Transcribe and format: {}", raw)
+                "content": format!("Rewrite dictation: {}", raw)
             }
         ],
         "stream": false,
@@ -361,9 +362,11 @@ pub async fn refine_with_llm(raw: &str, config: &AppConfig) -> String {
                             cleaned
                         };
 
-                        // Strip leading "Transcribe and format:" or surrounding quotes if echoed
+                        // Strip leading command prefixes or surrounding quotes if echoed
                         let mut final_text = stripped.trim();
-                        if final_text.to_lowercase().starts_with("transcribe and format:") {
+                        if final_text.to_lowercase().starts_with("rewrite dictation:") {
+                            final_text = final_text["rewrite dictation:".len()..].trim();
+                        } else if final_text.to_lowercase().starts_with("transcribe and format:") {
                             final_text = final_text["transcribe and format:".len()..].trim();
                         }
                         if final_text.starts_with('"') && final_text.ends_with('"') && final_text.len() >= 2 {
