@@ -439,11 +439,94 @@
               <div><strong>Screen Context Engine:</strong> Win32 Deep Context API (Active window and process detection)</div>
               <div><strong>System Text Injection:</strong> Win32 Virtual Keystroke Synthesizer (Zero-clipboard fallback)</div>
               <div><strong>Network & Privacy Guarantee:</strong> 100% Offline · 0 Bytes External Network Transit · No Telemetry · No Cloud Relays</div>
-              <div><strong>Inference Latency:</strong> &lt; 220 ms average for typical dictation utterances on GPU</div>
             </div>
           </div>
         </section>
       </main>
+    </div>
+
+    <!-- MODAL 1: CONFIRM DELETE WARNING -->
+    <div id="modal-confirm-delete" class="modal-overlay" style="display: none;">
+      <div class="modal-card">
+        <div class="modal-header">
+          <div class="modal-icon-warning">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+              <line x1="12" y1="9" x2="12" y2="13"></line>
+              <line x1="12" y1="17" x2="12.01" y2="17"></line>
+            </svg>
+          </div>
+          <div class="modal-title-group">
+            <h3 class="modal-title">Delete Model?</h3>
+            <p class="modal-subtitle">Are you sure you want to remove this model?</p>
+          </div>
+        </div>
+        <div class="modal-body">
+          <p id="modal-delete-desc" class="modal-body-text">
+            Removing this model will free up disk space on your machine. You will not be able to use it for dictation instructions until you re-download it.
+          </p>
+        </div>
+        <div class="modal-footer">
+          <button id="modal-delete-cancel-btn" class="secondary-btn">Cancel</button>
+          <button id="modal-delete-confirm-btn" class="danger-btn">Delete Model</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 2: DELETE PROCESS PROGRESS -->
+    <div id="modal-deleting-process" class="modal-overlay modal-locked" style="display: none;">
+      <div class="modal-card">
+        <div class="modal-header">
+          <div class="modal-spinner"></div>
+          <div class="modal-title-group">
+            <h3 class="modal-title" id="modal-deleting-title">Deleting Model...</h3>
+            <p class="modal-subtitle" id="modal-deleting-subtitle">Safely unlinking model weights and cleaning up disk space</p>
+          </div>
+        </div>
+        <div class="modal-body">
+          <div class="modal-progress-bar-wrap">
+            <div id="modal-deleting-bar" class="modal-progress-bar-fill"></div>
+          </div>
+          <div class="modal-status-row">
+            <span id="modal-deleting-status-text">Purging model files...</span>
+            <span id="modal-deleting-percent-text">0%</span>
+          </div>
+          <div class="modal-notice">
+            <span>⚠️ Deletion in progress. Please do not close the window.</span>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button id="modal-deleting-cancel-btn" class="secondary-btn">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 3: DOWNLOAD PROCESS PROGRESS -->
+    <div id="modal-download-process" class="modal-overlay modal-locked" style="display: none;">
+      <div class="modal-card">
+        <div class="modal-header">
+          <div class="modal-spinner"></div>
+          <div class="modal-title-group">
+            <h3 class="modal-title" id="modal-download-title">Downloading Model...</h3>
+            <p class="modal-subtitle" id="modal-download-subtitle">Pulling model layers directly to local storage</p>
+          </div>
+        </div>
+        <div class="modal-body">
+          <div class="modal-progress-bar-wrap">
+            <div id="modal-download-bar" class="modal-progress-bar-fill"></div>
+          </div>
+          <div class="modal-status-row">
+            <span id="modal-download-status-text">Connecting to local model daemon...</span>
+            <span id="modal-download-percent-text">0%</span>
+          </div>
+          <div class="modal-notice">
+            <span>ℹ️ Download in progress. This popup will close once downloading completes.</span>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button id="modal-download-cancel-btn" class="secondary-btn">Cancel Download</button>
+        </div>
+      </div>
     </div>
   </body>
 </html>

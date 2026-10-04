@@ -206,13 +206,42 @@ const replacementsTbody = document.getElementById("replacements-tbody") as HTMLE
 // History Tab
 const historyList = document.getElementById("history-list") as HTMLElement;
 
-// Models Tab
+// Models Tab & Modals
 const modelsList = document.getElementById("models-list") as HTMLElement | null;
 const refreshModelsBtn = document.getElementById("refresh-models-btn") as HTMLButtonElement | null;
 
-// Track active downloading models
+// Modal 1: Confirm Delete
+const modalConfirmDelete = document.getElementById("modal-confirm-delete") as HTMLElement | null;
+const modalDeleteDesc = document.getElementById("modal-delete-desc") as HTMLElement | null;
+const modalDeleteCancelBtn = document.getElementById("modal-delete-cancel-btn") as HTMLButtonElement | null;
+const modalDeleteConfirmBtn = document.getElementById("modal-delete-confirm-btn") as HTMLButtonElement | null;
+
+// Modal 2: Deleting Progress
+const modalDeletingProcess = document.getElementById("modal-deleting-process") as HTMLElement | null;
+const modalDeletingTitle = document.getElementById("modal-deleting-title") as HTMLElement | null;
+const modalDeletingSubtitle = document.getElementById("modal-deleting-subtitle") as HTMLElement | null;
+const modalDeletingBar = document.getElementById("modal-deleting-bar") as HTMLElement | null;
+const modalDeletingStatusText = document.getElementById("modal-deleting-status-text") as HTMLElement | null;
+const modalDeletingPercentText = document.getElementById("modal-deleting-percent-text") as HTMLElement | null;
+const modalDeletingCancelBtn = document.getElementById("modal-deleting-cancel-btn") as HTMLButtonElement | null;
+
+// Modal 3: Download Progress
+const modalDownloadProcess = document.getElementById("modal-download-process") as HTMLElement | null;
+const modalDownloadTitle = document.getElementById("modal-download-title") as HTMLElement | null;
+const modalDownloadSubtitle = document.getElementById("modal-download-subtitle") as HTMLElement | null;
+const modalDownloadBar = document.getElementById("modal-download-bar") as HTMLElement | null;
+const modalDownloadStatusText = document.getElementById("modal-download-status-text") as HTMLElement | null;
+const modalDownloadPercentText = document.getElementById("modal-download-percent-text") as HTMLElement | null;
+const modalDownloadCancelBtn = document.getElementById("modal-download-cancel-btn") as HTMLButtonElement | null;
+
+// Track active downloading & deleting models
 const downloadingModels = new Map<string, { status: string; completed?: number; total?: number }>();
 let installedModelIds: string[] = [];
+let pendingDeleteModel: ModelCatalogItem | null = null;
+let activeDeleteCancelled = false;
+let activeDeleteInterval: number | null = null;
+let activeDownloadModelId: string | null = null;
+let activeDownloadCancelled = false;
 
 // Stats Tab (Desktop Application Usage & Productivity)
 const topAppName = document.getElementById("top-app-name") as HTMLElement | null;
@@ -456,48 +485,214 @@ async function loadAndRenderModels() {
     // Download action
     const dlBtn = card.querySelector<HTMLButtonElement>(".model-btn-download");
     if (dlBtn && !isDownloading && !isInstalled) {
-      dlBtn.addEventListener("click", async () => {
-        downloadingModels.set(model.id, { status: "Starting download..." });
-        loadAndRenderModels();
-
-        try {
-          await invoke("pull_llm_model", { model: model.id });
-          downloadingModels.delete(model.id);
-          await loadAndRenderModels();
-          saveConfigToBackend();
-        } catch (err) {
-          alert(`Download failed for ${model.name}: ${err}`);
-          downloadingModels.delete(model.id);
-          loadAndRenderModels();
-        }
+      dlBtn.addEventListener("click", () => {
+        openDownloadModal(model);
       });
     }
 
     // Delete action
     const delBtn = card.querySelector<HTMLButtonElement>(".model-btn-delete");
     if (delBtn) {
-      delBtn.addEventListener("click", async () => {
-        if (confirm(`Are you sure you want to remove "${model.name}" from your machine? This will free up ${model.size} disk space.`)) {
-          delBtn.disabled = true;
-          delBtn.textContent = "Deleting...";
-          try {
-            await invoke("delete_llm_model", { model: model.id });
-            if (currentConfig.llm_model === model.id) {
-              currentConfig.llm_model = "none";
-              saveConfigToBackend();
-            }
-            await loadAndRenderModels();
-          } catch (err) {
-            alert(`Failed to delete model: ${err}`);
-            delBtn.disabled = false;
-            delBtn.textContent = "🗑 Delete Model";
-          }
-        }
+      delBtn.addEventListener("click", () => {
+        openDeleteConfirmModal(model);
       });
     }
 
     modelsList.appendChild(card);
   });
+}
+
+// --------------------------------------------------------------------------
+// MODAL WORKFLOW 1: Confirm Delete Warning Modal
+// --------------------------------------------------------------------------
+function openDeleteConfirmModal(model: ModelCatalogItem) {
+  pendingDeleteModel = model;
+  if (modalDeleteDesc) {
+    modalDeleteDesc.textContent = `Are you sure you want to remove "${model.name}" from your machine? This will permanently delete its local weights and free up ${model.size} disk space.`;
+  }
+  if (modalConfirmDelete) {
+    modalConfirmDelete.style.display = "flex";
+  }
+}
+
+function closeDeleteConfirmModal() {
+  pendingDeleteModel = null;
+  if (modalConfirmDelete) {
+    modalConfirmDelete.style.display = "none";
+  }
+}
+
+// --------------------------------------------------------------------------
+// MODAL WORKFLOW 2: Deletion Progress Modal (Cannot exit out midway, can cancel)
+// --------------------------------------------------------------------------
+async function startDeletionProcess(model: ModelCatalogItem) {
+  closeDeleteConfirmModal();
+
+  activeDeleteCancelled = false;
+  if (modalDeletingTitle) modalDeletingTitle.textContent = `Deleting ${model.name}...`;
+  if (modalDeletingSubtitle) modalDeletingSubtitle.textContent = `Safely unlinking model layers and freeing up ${model.size}...`;
+  if (modalDeletingBar) modalDeletingBar.style.width = "0%";
+  if (modalDeletingPercentText) modalDeletingPercentText.textContent = "0%";
+  if (modalDeletingStatusText) modalDeletingStatusText.textContent = "Initializing deletion...";
+  if (modalDeletingCancelBtn) {
+    modalDeletingCancelBtn.disabled = false;
+    modalDeletingCancelBtn.textContent = "Cancel";
+  }
+  if (modalDeletingProcess) {
+    modalDeletingProcess.style.display = "flex";
+  }
+
+  let progress = 0;
+  activeDeleteInterval = window.setInterval(async () => {
+    if (activeDeleteCancelled) {
+      if (activeDeleteInterval) clearInterval(activeDeleteInterval);
+      return;
+    }
+
+    if (progress < 85) {
+      progress += 10;
+      if (modalDeletingBar) modalDeletingBar.style.width = `${progress}%`;
+      if (modalDeletingPercentText) modalDeletingPercentText.textContent = `${progress}%`;
+      if (modalDeletingStatusText) {
+        if (progress < 30) modalDeletingStatusText.textContent = "Locating model layers in local Ollama storage...";
+        else if (progress < 60) modalDeletingStatusText.textContent = "Unregistering manifest and unlinking weights...";
+        else modalDeletingStatusText.textContent = "Reclaiming disk blocks...";
+      }
+    }
+  }, 140);
+
+  try {
+    await invoke("delete_llm_model", { model: model.id });
+
+    if (activeDeleteCancelled) {
+      if (activeDeleteInterval) clearInterval(activeDeleteInterval);
+      if (modalDeletingProcess) modalDeletingProcess.style.display = "none";
+      await loadAndRenderModels();
+      return;
+    }
+
+    // Finish to 100%
+    if (activeDeleteInterval) clearInterval(activeDeleteInterval);
+    if (modalDeletingBar) modalDeletingBar.style.width = "100%";
+    if (modalDeletingPercentText) modalDeletingPercentText.textContent = "100%";
+    if (modalDeletingStatusText) modalDeletingStatusText.textContent = "Model successfully deleted.";
+    if (modalDeletingCancelBtn) modalDeletingCancelBtn.disabled = true;
+
+    if (currentConfig.llm_model === model.id) {
+      currentConfig.llm_model = "none";
+      await saveConfigToBackend();
+    }
+
+    setTimeout(async () => {
+      if (modalDeletingProcess) modalDeletingProcess.style.display = "none";
+      await loadAndRenderModels();
+    }, 700);
+  } catch (err) {
+    if (activeDeleteInterval) clearInterval(activeDeleteInterval);
+    if (!activeDeleteCancelled) {
+      alert(`Deletion failed for ${model.name}: ${err}`);
+    }
+    if (modalDeletingProcess) modalDeletingProcess.style.display = "none";
+    await loadAndRenderModels();
+  }
+}
+
+function cancelDeletionProcess() {
+  activeDeleteCancelled = true;
+  if (activeDeleteInterval) clearInterval(activeDeleteInterval);
+  if (modalDeletingStatusText) modalDeletingStatusText.textContent = "Cancelling deletion process...";
+  if (modalDeletingCancelBtn) {
+    modalDeletingCancelBtn.disabled = true;
+    modalDeletingCancelBtn.textContent = "Cancelling...";
+  }
+  setTimeout(() => {
+    if (modalDeletingProcess) modalDeletingProcess.style.display = "none";
+    loadAndRenderModels();
+  }, 400);
+}
+
+// --------------------------------------------------------------------------
+// MODAL WORKFLOW 3: Download Progress Modal (Cannot exit out midway, can cancel)
+// --------------------------------------------------------------------------
+async function openDownloadModal(model: ModelCatalogItem) {
+  activeDownloadModelId = model.id;
+  activeDownloadCancelled = false;
+
+  downloadingModels.set(model.id, { status: "Starting download..." });
+  loadAndRenderModels();
+
+  if (modalDownloadTitle) modalDownloadTitle.textContent = `Downloading ${model.name}...`;
+  if (modalDownloadSubtitle) modalDownloadSubtitle.textContent = `Pulling model layers directly to disk (${model.size})`;
+  if (modalDownloadBar) modalDownloadBar.style.width = "0%";
+  if (modalDownloadPercentText) modalDownloadPercentText.textContent = "0%";
+  if (modalDownloadStatusText) modalDownloadStatusText.textContent = "Contacting local Ollama service...";
+  if (modalDownloadCancelBtn) {
+    modalDownloadCancelBtn.disabled = false;
+    modalDownloadCancelBtn.textContent = "Cancel Download";
+  }
+  if (modalDownloadProcess) {
+    modalDownloadProcess.style.display = "flex";
+  }
+
+  try {
+    await invoke("pull_llm_model", { model: model.id });
+
+    if (activeDownloadCancelled) {
+      if (modalDownloadProcess) modalDownloadProcess.style.display = "none";
+      downloadingModels.delete(model.id);
+      await loadAndRenderModels();
+      return;
+    }
+
+    if (modalDownloadBar) modalDownloadBar.style.width = "100%";
+    if (modalDownloadPercentText) modalDownloadPercentText.textContent = "100%";
+    if (modalDownloadStatusText) modalDownloadStatusText.textContent = "Download complete and verified!";
+    if (modalDownloadCancelBtn) modalDownloadCancelBtn.disabled = true;
+
+    downloadingModels.delete(model.id);
+    await loadAndRenderModels();
+    await saveConfigToBackend();
+
+    setTimeout(() => {
+      if (modalDownloadProcess) modalDownloadProcess.style.display = "none";
+      activeDownloadModelId = null;
+    }, 700);
+  } catch (err) {
+    if (!activeDownloadCancelled) {
+      alert(`Download failed for ${model.name}: ${err}`);
+    }
+    downloadingModels.delete(model.id);
+    if (modalDownloadProcess) modalDownloadProcess.style.display = "none";
+    activeDownloadModelId = null;
+    await loadAndRenderModels();
+  }
+}
+
+async function cancelDownloadProcess() {
+  activeDownloadCancelled = true;
+  const currentModelId = activeDownloadModelId;
+
+  if (modalDownloadStatusText) modalDownloadStatusText.textContent = "Stopping and cancelling download...";
+  if (modalDownloadCancelBtn) {
+    modalDownloadCancelBtn.disabled = true;
+    modalDownloadCancelBtn.textContent = "Cancelling...";
+  }
+
+  if (currentModelId) {
+    downloadingModels.delete(currentModelId);
+    // If Ollama already created a partial model, clean it up
+    try {
+      await invoke("delete_llm_model", { model: currentModelId });
+    } catch (_) {
+      // Ignore cleanup error if model wasn't registered yet
+    }
+  }
+
+  setTimeout(() => {
+    if (modalDownloadProcess) modalDownloadProcess.style.display = "none";
+    activeDownloadModelId = null;
+    loadAndRenderModels();
+  }, 400);
 }
 
 // Compute and display REAL app usage on this device
@@ -893,18 +1088,60 @@ window.addEventListener("DOMContentLoaded", async () => {
         if (payload.completed) info.completed = payload.completed;
         if (payload.total) info.total = payload.total;
         downloadingModels.set(modelId, info);
+
+        // Update modal progress bar & labels in real-time
+        if (activeDownloadModelId === modelId) {
+          if (payload.status && modalDownloadStatusText) {
+            modalDownloadStatusText.textContent = payload.status;
+          }
+          if (payload.completed && payload.total && payload.total > 0) {
+            const pct = Math.min(100, Math.round((payload.completed / payload.total) * 100));
+            if (modalDownloadBar) modalDownloadBar.style.width = `${pct}%`;
+            if (modalDownloadPercentText) modalDownloadPercentText.textContent = `${pct}%`;
+          }
+        }
       }
       loadAndRenderModels();
     });
 
     await listen<{ model: string }>("model-pull-completed", async (event) => {
       downloadingModels.delete(event.payload.model);
+      if (activeDownloadModelId === event.payload.model) {
+        if (modalDownloadBar) modalDownloadBar.style.width = "100%";
+        if (modalDownloadPercentText) modalDownloadPercentText.textContent = "100%";
+        if (modalDownloadStatusText) modalDownloadStatusText.textContent = "Download complete and verified!";
+        setTimeout(() => {
+          if (modalDownloadProcess) modalDownloadProcess.style.display = "none";
+          activeDownloadModelId = null;
+        }, 700);
+      }
       await loadAndRenderModels();
       saveConfigToBackend();
     });
   } catch (err) {
     console.debug("Model pull listener error:", err);
   }
+
+  // Modal 1: Confirm Delete Button Listeners
+  modalDeleteCancelBtn?.addEventListener("click", () => {
+    closeDeleteConfirmModal();
+  });
+
+  modalDeleteConfirmBtn?.addEventListener("click", () => {
+    if (pendingDeleteModel) {
+      startDeletionProcess(pendingDeleteModel);
+    }
+  });
+
+  // Modal 2: Deletion Progress Cancel Button Listener
+  modalDeletingCancelBtn?.addEventListener("click", () => {
+    cancelDeletionProcess();
+  });
+
+  // Modal 3: Download Progress Cancel Button Listener
+  modalDownloadCancelBtn?.addEventListener("click", () => {
+    cancelDownloadProcess();
+  });
 
   // Refresh Models button
   refreshModelsBtn?.addEventListener("click", async () => {
