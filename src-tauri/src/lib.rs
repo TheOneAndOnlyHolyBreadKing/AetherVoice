@@ -7,7 +7,7 @@ pub mod whisper;
 use audio::AudioRecorder;
 use downloader::{download_model, get_models_dir, is_model_installed, DEFAULT_MODEL_FILENAME, DEFAULT_MODEL_URL};
 use injector::inject_text;
-use refinement::{refine_text, refine_with_llm, AppConfig};
+use refinement::{refine_text, refine_with_llm, AppConfig, HistoryItem};
 use std::sync::{Arc, Mutex, RwLock};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
@@ -74,6 +74,39 @@ fn save_user_config(
 
     let mut lock = state.config.write().map_err(|e| e.to_string())?;
     *lock = config;
+    Ok(())
+}
+
+fn get_history_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    let app_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app_data_dir: {}", e))?;
+    if !app_dir.exists() {
+        let _ = std::fs::create_dir_all(&app_dir);
+    }
+    Ok(app_dir.join("aethervoice_history.json"))
+}
+
+#[tauri::command]
+fn get_dictation_history(app: AppHandle) -> Result<Vec<HistoryItem>, String> {
+    let path = get_history_path(&app)?;
+    if path.exists() {
+        if let Ok(data) = std::fs::read_to_string(&path) {
+            if let Ok(items) = serde_json::from_str::<Vec<HistoryItem>>(&data) {
+                return Ok(items);
+            }
+        }
+    }
+    Ok(Vec::new())
+}
+
+#[tauri::command]
+fn save_dictation_history(app: AppHandle, history: Vec<HistoryItem>) -> Result<(), String> {
+    let path = get_history_path(&app)?;
+    let serialized = serde_json::to_string_pretty(&history).map_err(|e| e.to_string())?;
+    std::fs::write(&path, serialized).map_err(|e| e.to_string())?;
+    let _ = app.emit("dictation-history-updated", ());
     Ok(())
 }
 
@@ -378,7 +411,9 @@ pub fn run() {
             get_audio_devices,
             start_dragging,
             get_audio_level,
-            get_active_app
+            get_active_app,
+            get_dictation_history,
+            save_dictation_history
         ])
         .setup(|app| {
             let handle = app.handle().clone();

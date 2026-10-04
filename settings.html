@@ -316,9 +316,19 @@
 
         <!-- TAB: HISTORY -->
         <section class="tab-content" id="tab-history">
-          <div class="content-header">
-            <h1 class="content-title">Dictation History</h1>
-            <p class="content-subtitle">Recent dictation sessions stored locally on this machine.</p>
+          <div class="content-header" style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+              <h1 class="content-title">Dictation History</h1>
+              <p class="content-subtitle">Recent dictation sessions stored locally on this machine.</p>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <button id="keep-top5-btn" class="secondary-btn" style="font-size: 12px; padding: 6px 12px; border-radius: 6px; cursor: pointer;">
+                Keep 5 Most Recent
+              </button>
+              <button id="clear-all-history-btn" class="secondary-btn" style="font-size: 12px; padding: 6px 12px; border-radius: 6px; cursor: pointer; color: #ff5252;">
+                Clear All
+              </button>
+            </div>
           </div>
 
           <div class="history-list" id="history-list"></div>

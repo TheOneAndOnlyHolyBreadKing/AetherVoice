@@ -317,10 +317,25 @@ function replayDictation(text: string, buttonElement: HTMLButtonElement) {
 }
 
 // Render Real Live History (No placeholder data)
-function renderHistory() {
+async function renderHistory() {
   if (!historyList) return;
-  const historyData: Array<{ id: string; time: string; timestamp: number; text: string; words?: number; duration?: number }> = 
-    JSON.parse(localStorage.getItem("aethervoice_history") || "[]");
+  
+  let historyData: Array<{ id: string; time: string; timestamp: number; text: string; words?: number; duration?: number; app?: string }> = [];
+
+  try {
+    const backendHistory = await invoke<Array<any>>("get_dictation_history");
+    if (backendHistory && backendHistory.length > 0) {
+      historyData = backendHistory;
+      localStorage.setItem("aethervoice_history", JSON.stringify(historyData));
+    } else {
+      historyData = JSON.parse(localStorage.getItem("aethervoice_history") || "[]");
+      if (historyData.length > 0) {
+        await invoke("save_dictation_history", { history: historyData });
+      }
+    }
+  } catch (err) {
+    historyData = JSON.parse(localStorage.getItem("aethervoice_history") || "[]");
+  }
   
   if (historyData.length === 0) {
     historyList.innerHTML = `
@@ -559,6 +574,38 @@ window.addEventListener("DOMContentLoaded", async () => {
       repReplacement.value = "";
       renderReplacements();
       await saveConfigToBackend();
+    }
+  });
+
+  // Keep 5 Most Recent History Entries button
+  const keepTop5Btn = document.getElementById("keep-top5-btn");
+  keepTop5Btn?.addEventListener("click", async () => {
+    let historyData = JSON.parse(localStorage.getItem("aethervoice_history") || "[]");
+    if (historyData.length > 5) {
+      historyData = historyData.slice(0, 5);
+      localStorage.setItem("aethervoice_history", JSON.stringify(historyData));
+      try {
+        await invoke("save_dictation_history", { history: historyData });
+      } catch (err) {
+        console.warn("Failed to persist sliced history:", err);
+      }
+      renderHistory();
+      updateRealStats();
+    }
+  });
+
+  // Clear All History button
+  const clearAllHistoryBtn = document.getElementById("clear-all-history-btn");
+  clearAllHistoryBtn?.addEventListener("click", async () => {
+    if (confirm("Are you sure you want to delete all dictation history?")) {
+      localStorage.setItem("aethervoice_history", JSON.stringify([]));
+      try {
+        await invoke("save_dictation_history", { history: [] });
+      } catch (err) {
+        console.warn("Failed to persist empty history:", err);
+      }
+      renderHistory();
+      updateRealStats();
     }
   });
 });

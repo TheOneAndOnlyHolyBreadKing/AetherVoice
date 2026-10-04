@@ -9,6 +9,18 @@ pub struct ReplacementItem {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HistoryItem {
+    pub id: String,
+    pub time: String,
+    pub timestamp: u64,
+    pub text: String,
+    pub words: usize,
+    pub duration: u64,
+    #[serde(default)]
+    pub app: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub custom_instructions: String,
     pub hotkey: String,

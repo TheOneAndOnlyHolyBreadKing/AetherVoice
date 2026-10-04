@@ -113,6 +113,11 @@ function recordSessionStats(text: string, durationSec: number, targetApp: string
     if (history.length > 100) history.pop();
     localStorage.setItem("aethervoice_history", JSON.stringify(history));
 
+    // Also persist directly to app_data_dir via Tauri backend
+    invoke("save_dictation_history", { history }).catch((e) => {
+      console.warn("Backend save_dictation_history warning:", e);
+    });
+
     // Update cumulative stats including per-app dictation frequency
     const stats = JSON.parse(localStorage.getItem("aethervoice_stats") || '{"words":0,"secondsSaved":0,"sessions":0,"totalDuration":0,"appUsage":{}}');
     stats.words += words;
@@ -224,6 +229,11 @@ window.addEventListener("DOMContentLoaded", async () => {
           }
         }
       }
+    });
+
+    await listen("dictation-history-updated", () => {
+      // Reload stats and memory if history changed from settings window
+      window.dispatchEvent(new Event("aethervoice-stats-updated"));
     });
   } catch (err) {
     console.debug("Running without Tauri event backend:", err);
