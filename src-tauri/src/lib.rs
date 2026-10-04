@@ -712,8 +712,12 @@ pub fn run() {
 
             let _tray = tray_builder.build(app)?;
 
-            // The capsule remains invisible on launch until explicitly toggled on from system tray
-            println!("[AetherVoice] App started quietly in system tray.");
+            if let Some(main_win) = app.get_webview_window("main") {
+                println!("[AetherVoice] Showing capsule window on launch...");
+                let _ = main_win.show();
+                let _ = main_win.set_focus();
+            }
+
             println!("[AetherVoice] Setup completed successfully.");
             Ok(())
         })
