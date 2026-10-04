@@ -1,7 +1,7 @@
 use hound::{WavSpec, WavWriter};
 use serde::Deserialize;
 use std::io::{BufRead, BufReader, Write};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::Mutex;
 
@@ -74,7 +74,7 @@ impl WhisperEngine {
             .arg(&model)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::inherit());
+            .stderr(Stdio::null());
 
         #[cfg(windows)]
         {
@@ -180,5 +180,25 @@ impl WhisperEngine {
             }
             Err(e) => Err(format!("Invalid whisper response JSON '{}': {}", response.trim(), e)),
         }
+    }
+
+    /// Cleanly kills the whisper daemon child process.
+    pub fn terminate(&self) {
+        if let Ok(mut lock) = self.process.lock() {
+            if let Some((mut child, mut stdin, _)) = lock.take() {
+                // Try soft quit first
+                let _ = writeln!(stdin, "QUIT");
+                let _ = stdin.flush();
+                // Forcibly kill to guarantee no lingering background task
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+        }
+    }
+}
+
+impl Drop for WhisperEngine {
+    fn drop(&mut self) {
+        self.terminate();
     }
 }

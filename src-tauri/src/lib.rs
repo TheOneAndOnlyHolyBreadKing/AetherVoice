@@ -693,6 +693,13 @@ pub fn run() {
                         let _ = toggle_capsule_visibility(app.clone());
                     }
                     "quit" => {
+                        if let Some(state) = app.try_state::<AppState>() {
+                            if let Ok(whisper_lock) = state.whisper.try_lock() {
+                                if let Some(whisper_engine) = whisper_lock.as_ref() {
+                                    whisper_engine.terminate();
+                                }
+                            }
+                        }
                         app.exit(0);
                     }
                     _ => {}
