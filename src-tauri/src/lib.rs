@@ -53,6 +53,7 @@ pub fn init_persistent_storage(app: &AppHandle) {
                 "aethervoice_config.json",
                 "aethervoice_history.json",
                 "aethervoice_stats.json",
+                "aethervoice_companion.json",
             ];
             for file_name in &files {
                 let primary_file = primary_dir.join(file_name);
@@ -235,6 +236,82 @@ fn save_user_stats(app: AppHandle, stats: serde_json::Value) -> Result<(), Strin
     let serialized = serde_json::to_string_pretty(&stats).map_err(|e| e.to_string())?;
     std::fs::write(&path, &serialized).map_err(|e| e.to_string())?;
     mirror_to_persistent_backup("aethervoice_stats.json", &serialized);
+    Ok(())
+}
+
+fn get_companion_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    let app_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app_data_dir: {}", e))?;
+    if !app_dir.exists() {
+        let _ = std::fs::create_dir_all(&app_dir);
+    }
+    let primary = app_dir.join("aethervoice_companion.json");
+    if !primary.exists() {
+        if let Ok(backup_dir) = get_persistent_backup_dir() {
+            let backup = backup_dir.join("aethervoice_companion.json");
+            if backup.exists() {
+                let _ = std::fs::copy(&backup, &primary);
+            }
+        }
+    }
+    Ok(primary)
+}
+
+#[tauri::command]
+fn get_companion_state(app: AppHandle) -> Result<serde_json::Value, String> {
+    let path = get_companion_path(&app)?;
+    if path.exists() {
+        if let Ok(data) = std::fs::read_to_string(&path) {
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&data) {
+                return Ok(val);
+            }
+        }
+    }
+    Ok(serde_json::json!({
+        "enabled": true,
+        "scale": 1.0,
+        "words_today": 0,
+        "words_total": 0,
+        "daily_streak": 1,
+        "last_dictation_date": "2026-10-17",
+        "equipped_cosmetics": ["default_halo"],
+        "unlocked_cosmetics": ["default_halo"]
+    }))
+}
+
+#[tauri::command]
+fn save_companion_state(app: AppHandle, state: serde_json::Value) -> Result<(), String> {
+    let path = get_companion_path(&app)?;
+    let serialized = serde_json::to_string_pretty(&state).map_err(|e| e.to_string())?;
+    std::fs::write(&path, &serialized).map_err(|e| e.to_string())?;
+    mirror_to_persistent_backup("aethervoice_companion.json", &serialized);
+    let _ = app.emit("companion-settings-updated", state);
+    Ok(())
+}
+
+#[tauri::command]
+fn toggle_companion_window(app: AppHandle, show: bool) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("companion") {
+        if show {
+            let _ = win.show();
+        } else {
+            let _ = win.hide();
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn open_settings(app: AppHandle, tab: Option<String>) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("settings") {
+        let _ = win.show();
+        let _ = win.set_focus();
+        if let Some(t) = tab {
+            let _ = win.emit("open-settings-tab", serde_json::json!({ "tab": t }));
+        }
+    }
     Ok(())
 }
 
@@ -955,7 +1032,11 @@ pub fn run() {
             get_audio_level,
             get_active_app,
             get_dictation_history,
-            save_dictation_history
+            save_dictation_history,
+            get_companion_state,
+            save_companion_state,
+            toggle_companion_window,
+            open_settings
         ])
         .setup(|app| {
             let handle = app.handle().clone();
@@ -1001,7 +1082,7 @@ pub fn run() {
             });
 
             #[cfg(windows)]
-            spawn_global_hotkey_listener(handle);
+            spawn_global_hotkey_listener(handle.clone());
 
             let settings_i = MenuItem::with_id(app, "settings", "Settings...", true, None::<&str>)?;
             let toggle_i = MenuItem::with_id(app, "toggle", "Toggle Capsule", true, None::<&str>)?;
@@ -1050,6 +1131,20 @@ pub fn run() {
                 println!("[AetherVoice] Showing capsule window on launch...");
                 let _ = main_win.show();
                 let _ = main_win.set_focus();
+            }
+
+            if let Some(companion_win) = app.get_webview_window("companion") {
+                // Check if companion is enabled
+                let is_enabled = if let Ok(state_val) = get_companion_state(handle.clone()) {
+                    state_val.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true)
+                } else {
+                    true
+                };
+                if is_enabled {
+                    let _ = companion_win.show();
+                } else {
+                    let _ = companion_win.hide();
+                }
             }
 
             println!("[AetherVoice] Setup completed successfully.");

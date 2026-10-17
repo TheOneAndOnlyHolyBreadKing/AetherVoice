@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Aether Core</title>
+    <link rel="stylesheet" href="/src/companion.css" />
+  </head>
+  <body>
+    <div id="companion-container" class="companion-wrapper">
+      <canvas id="companion-canvas" width="180" height="180"></canvas>
+      
+      <!-- Right-click quick context menu -->
+      <div id="companion-menu" class="companion-context-menu" style="display: none;">
+        <div class="menu-header">
+          <span class="menu-name">Aether Core</span>
+          <span class="menu-lvl" id="menu-lvl-badge">Lv. 1</span>
+        </div>
+        <div class="menu-divider"></div>
+        <button class="menu-item" id="menu-poke">✨ Poke & Giggle</button>
+        <button class="menu-item" id="menu-sleep">💤 Snooze (AFK)</button>
+        <button class="menu-item" id="menu-wardrobe">👗 Open Wardrobe</button>
+        <div class="menu-divider"></div>
+        <button class="menu-item menu-danger" id="menu-hide">✕ Hide Desktop Pet</button>
+      </div>
+    </div>
+    <script type="module" src="/src/companion.ts"></script>
+  </body>
+</html>

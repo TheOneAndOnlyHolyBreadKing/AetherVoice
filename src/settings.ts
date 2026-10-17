@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { AetherCoreRenderer, COSMETIC_CATALOG } from "./companion_canvas";
 
 interface ReplacementItem {
   spoken: string;
@@ -278,6 +279,8 @@ function switchTab(tabId: string) {
     renderHistory();
   } else if (tabId === "models") {
     loadAndRenderModels();
+  } else if (tabId === "companion") {
+    loadAndRenderCompanionTab();
   }
 }
 
@@ -1288,4 +1291,252 @@ window.addEventListener("DOMContentLoaded", async () => {
       updateRealStats();
     }
   });
+
+  // Companion Tab Event Listeners
+  const companionEnableToggle = document.getElementById("companion-enable-toggle") as HTMLInputElement | null;
+  const companionScaleSlider = document.getElementById("companion-scale-slider") as HTMLInputElement | null;
+  const companionScaleValue = document.getElementById("companion-scale-value") as HTMLElement | null;
+  const companionBounceToggle = document.getElementById("companion-bounce-toggle") as HTMLInputElement | null;
+  const companionPokeBtn = document.getElementById("companion-preview-poke-btn") as HTMLButtonElement | null;
+  const companionThrowBtn = document.getElementById("companion-preview-throw-btn") as HTMLButtonElement | null;
+
+  companionPokeBtn?.addEventListener("click", () => {
+    if (companionPreviewRenderer) {
+      companionPreviewRenderer.poke();
+    }
+  });
+
+  companionThrowBtn?.addEventListener("click", () => {
+    if (companionPreviewRenderer) {
+      companionPreviewRenderer.triggerThrow();
+    }
+  });
+
+  companionEnableToggle?.addEventListener("change", async () => {
+    const enabled = companionEnableToggle.checked;
+    companionSettingsData.enabled = enabled;
+    try {
+      await invoke("toggle_companion_window", { show: enabled });
+      await invoke("save_companion_state", { state: companionSettingsData });
+    } catch (err) {
+      console.warn("Toggle companion window warning:", err);
+    }
+  });
+
+  companionScaleSlider?.addEventListener("input", async () => {
+    const val = parseFloat(companionScaleSlider.value);
+    companionSettingsData.scale = val;
+    if (companionScaleValue) companionScaleValue.textContent = `${val.toFixed(2)}x`;
+    if (companionPreviewRenderer) companionPreviewRenderer.scale = val;
+    try {
+      await invoke("save_companion_state", { state: companionSettingsData });
+    } catch (err) {
+      console.warn("Save companion scale warning:", err);
+    }
+  });
+
+  companionBounceToggle?.addEventListener("change", async () => {
+    // Save setting in companion state
+    await invoke("save_companion_state", { state: companionSettingsData });
+  });
+
+  // Listen for external tab switch request
+  try {
+    await listen<{ tab: string }>("open-settings-tab", (event) => {
+      if (event.payload && event.payload.tab) {
+        switchTab(event.payload.tab);
+      }
+    });
+  } catch (_) {}
 });
+
+// --------------------------------------------------------------------------
+// COMPANION TAB CONTROLLER
+// --------------------------------------------------------------------------
+interface CompanionStateData {
+  enabled: boolean;
+  scale: number;
+  words_today: number;
+  words_total: number;
+  daily_streak: number;
+  last_dictation_date: string;
+  equipped_cosmetics: string[];
+  unlocked_cosmetics: string[];
+}
+
+let companionSettingsData: CompanionStateData = {
+  enabled: true,
+  scale: 1.0,
+  words_today: 0,
+  words_total: 0,
+  daily_streak: 1,
+  last_dictation_date: new Date().toISOString().split("T")[0],
+  equipped_cosmetics: ["default_halo"],
+  unlocked_cosmetics: ["default_halo"],
+};
+
+let companionPreviewRenderer: AetherCoreRenderer | null = null;
+
+async function loadAndRenderCompanionTab() {
+  const canvas = document.getElementById("companion-preview-canvas") as HTMLCanvasElement | null;
+  if (canvas && !companionPreviewRenderer) {
+    companionPreviewRenderer = new AetherCoreRenderer(canvas);
+    companionPreviewRenderer.start();
+  }
+
+  try {
+    const saved = await invoke<CompanionStateData>("get_companion_state");
+    if (saved) {
+      companionSettingsData = { ...companionSettingsData, ...saved };
+    }
+  } catch (err) {
+    console.debug("Companion state load warning:", err);
+  }
+
+  // Cross-reference total words with stats if stats has higher cumulative word count
+  try {
+    const statsData = JSON.parse(localStorage.getItem("aethervoice_stats") || "{}");
+    if (typeof statsData.words === "number" && statsData.words > companionSettingsData.words_total) {
+      companionSettingsData.words_total = statsData.words;
+    }
+  } catch (_) {}
+
+  // Update Preview Renderer
+  if (companionPreviewRenderer) {
+    companionPreviewRenderer.equippedCosmetics = new Set(companionSettingsData.equipped_cosmetics);
+    companionPreviewRenderer.scale = companionSettingsData.scale || 1.0;
+  }
+
+  // Populate UI Fields
+  const enableToggle = document.getElementById("companion-enable-toggle") as HTMLInputElement | null;
+  const scaleSlider = document.getElementById("companion-scale-slider") as HTMLInputElement | null;
+  const scaleValue = document.getElementById("companion-scale-value") as HTMLElement | null;
+  const levelTag = document.getElementById("companion-level-tag") as HTMLElement | null;
+  const streakText = document.getElementById("companion-streak-text") as HTMLElement | null;
+  const wordsTodayText = document.getElementById("companion-words-today-text") as HTMLElement | null;
+  const goalBar = document.getElementById("companion-goal-bar") as HTMLElement | null;
+  const unlockedCountBadge = document.getElementById("companion-unlocked-count") as HTMLElement | null;
+
+  if (enableToggle) enableToggle.checked = companionSettingsData.enabled ?? true;
+  if (scaleSlider) scaleSlider.value = (companionSettingsData.scale ?? 1.0).toString();
+  if (scaleValue) scaleValue.textContent = `${(companionSettingsData.scale ?? 1.0).toFixed(2)}x`;
+
+  const lvl = Math.max(1, Math.floor(Math.sqrt(companionSettingsData.words_total / 40)) + 1);
+  const titles = ["Novice", "Apprentice", "Dictator", "Sonic Sage", "Aether Master", "Cosmic Architect"];
+  const title = titles[Math.min(lvl - 1, titles.length - 1)];
+  if (levelTag) levelTag.textContent = `Lv. ${lvl} · ${title}`;
+
+  if (streakText) streakText.textContent = `${companionSettingsData.daily_streak}-Day Streak`;
+  if (wordsTodayText) wordsTodayText.textContent = `${companionSettingsData.words_today.toLocaleString()} / 500 words`;
+
+  const goalPct = Math.min(100, Math.round((companionSettingsData.words_today / 500) * 100));
+  if (goalBar) goalBar.style.width = `${goalPct}%`;
+
+  if (unlockedCountBadge) {
+    unlockedCountBadge.textContent = `${companionSettingsData.unlocked_cosmetics.length} / ${COSMETIC_CATALOG.length} Unlocked`;
+  }
+
+  renderCosmeticsGrid();
+  renderMilestonesList();
+}
+
+function renderCosmeticsGrid() {
+  const grid = document.getElementById("companion-cosmetics-grid");
+  if (!grid) return;
+  grid.innerHTML = "";
+
+  const icons: Record<string, string> = {
+    default_halo: "💫",
+    cyber_headphones: "🎧",
+    neon_visor: "🕶️",
+    golden_crown: "👑",
+    star_aura: "✨",
+  };
+
+  COSMETIC_CATALOG.forEach((item) => {
+    const isUnlocked = companionSettingsData.unlocked_cosmetics.includes(item.id);
+    const isEquipped = companionSettingsData.equipped_cosmetics.includes(item.id);
+
+    const card = document.createElement("div");
+    card.className = `cosmetic-card ${isEquipped ? "equipped" : ""} ${!isUnlocked ? "locked" : ""}`;
+
+    let actionBtnHtml = "";
+    if (!isUnlocked) {
+      actionBtnHtml = `<button class="cosmetic-btn locked-btn" disabled>🔒 ${item.unlockedAtWords.toLocaleString()} Words</button>`;
+    } else if (isEquipped) {
+      actionBtnHtml = `<button class="cosmetic-btn unequip" data-id="${item.id}">Unequip</button>`;
+    } else {
+      actionBtnHtml = `<button class="cosmetic-btn equip" data-id="${item.id}">Equip</button>`;
+    }
+
+    card.innerHTML = `
+      <div class="cosmetic-icon">${icons[item.id] || "🎁"}</div>
+      <div class="cosmetic-name">${item.name}</div>
+      <div class="cosmetic-desc">${item.description}</div>
+      ${actionBtnHtml}
+    `;
+
+    grid.appendChild(card);
+  });
+
+  // Attach button events
+  grid.querySelectorAll<HTMLButtonElement>(".cosmetic-btn.equip").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.id;
+      if (id && !companionSettingsData.equipped_cosmetics.includes(id)) {
+        companionSettingsData.equipped_cosmetics.push(id);
+        if (companionPreviewRenderer) {
+          companionPreviewRenderer.equippedCosmetics.add(id);
+          companionPreviewRenderer.poke();
+        }
+        await invoke("save_companion_state", { state: companionSettingsData });
+        renderCosmeticsGrid();
+      }
+    });
+  });
+
+  grid.querySelectorAll<HTMLButtonElement>(".cosmetic-btn.unequip").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.id;
+      if (id) {
+        companionSettingsData.equipped_cosmetics = companionSettingsData.equipped_cosmetics.filter((x) => x !== id);
+        if (companionPreviewRenderer) {
+          companionPreviewRenderer.equippedCosmetics.delete(id);
+        }
+        await invoke("save_companion_state", { state: companionSettingsData });
+        renderCosmeticsGrid();
+      }
+    });
+  });
+}
+
+function renderMilestonesList() {
+  const list = document.getElementById("companion-milestones-list");
+  if (!list) return;
+  list.innerHTML = "";
+
+  const milestones = [
+    { words: 0, title: "Origin Awakening", reward: "Default Aether Rings" },
+    { words: 100, title: "First 100 Words", reward: "Cyber Over-Ear Headphones" },
+    { words: 500, title: "Half-Thousand Flow", reward: "Neon Cyberpunk Visor" },
+    { words: 1000, title: "Kiloword Scribe", reward: "Golden Royal Crown" },
+    { words: 5000, title: "Voice Virtuoso", reward: "Cosmic Starfield Nebula Aura" },
+  ];
+
+  milestones.forEach((m) => {
+    const isDone = companionSettingsData.words_total >= m.words;
+    const item = document.createElement("div");
+    item.className = `milestone-item ${isDone ? "completed" : ""}`;
+    item.innerHTML = `
+      <div class="milestone-left">
+        <div class="milestone-check">${isDone ? "✓" : ""}</div>
+        <div>
+          <div class="milestone-title">${m.title}</div>
+          <div class="milestone-reward">${m.reward}</div>
+        </div>
+      </div>
+      <div class="milestone-status">${isDone ? "Completed" : `${companionSettingsData.words_total} / ${m.words}`}</div>
+    `;
+    list.appendChild(item);
+  });
+}

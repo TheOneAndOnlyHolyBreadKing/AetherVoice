@@ -53,6 +53,13 @@ graph TD
 - [x] **Phase 7: User Acceptance Testing & GitHub Release Distribution**
   - Upgraded release target to `v0.2.0`.
   - Multi-layer persistence and strict model verification verified and confirmed.
+- [x] **Phase 8: Aether Core Desktop Companion & Virtual Pet System**
+  - Interactive 2D pixel-art mascot engine (`AetherCoreRenderer`) powered by official sprite assets (`frame_01` to `frame_08`).
+  - Dual-mode topology: Dedicated **Companion** tab in Settings launcher + floating transparent always-on-top desktop overlay window.
+  - State machine: Idle hover with gentle eye-blink loop, audio amplitude voice bounce, rapid sonic ring projectile throw VFX on dictation completion, muted mode, and 3-minute AFK snoozing with animated rising `zZz` particles.
+  - Cosmetics Wardrobe: Equip/unequip system for Cyber Headphones, Golden Crown, Neon Visor, and Cosmic Starfield.
+  - Progression Engine: Dictated words tracking, daily streaks, level progression, and milestone unlock checklist.
+  - Dual-layer persistent storage backing (`aethervoice_companion.json` mirrored to `%APPDATA%\AetherVoice`).
 
 ---
 
@@ -60,8 +67,9 @@ graph TD
 - **Single-Instance Enforcement**: Verified via Win32 `CreateMutexW` and `GetLastError() == ERROR_ALREADY_EXISTS`. Triggers native modal alert `MessageBoxW` and clean shutdown when launched multiple times.
 - **Automated Setup Prerequisites**: Integrated into NSIS setup installer bundle (`AetherVoice_0.2.0_x64-setup.exe`), inspecting/installing Python, PyTorch, Whisper, and Ollama with a visible progress window during installation.
 - **In-App Self-Healing Whisper Engine**: If a user runs without prerequisites pre-installed, AetherVoice detects the missing `whisper` module, informs the user with a modal notice, and automatically runs `pip install` in the background with `py` and `python` launcher fallbacks.
-- **Persistent Multi-Layer User Storage**: Config (`aethervoice_config.json`), history (`aethervoice_history.json`), and stats (`aethervoice_stats.json`) mirrored to `%APPDATA%\AetherVoice`. Startup sequence self-heals by restoring from mirror if primary directory is wiped.
+- **Persistent Multi-Layer User Storage**: Config (`aethervoice_config.json`), history (`aethervoice_history.json`), stats (`aethervoice_stats.json`), and companion (`aethervoice_companion.json`) mirrored to `%APPDATA%\AetherVoice`. Startup sequence self-heals by restoring from mirror if primary directory is wiped.
 - **Strict Startup Model Verification**: Verified through `verify_and_sync_models_internal`. Catalog models present on the system are auto-detected and confirmed; uncataloged/random models are discarded.
+- **Aether Core Desktop Companion**: 2D pixel-art virtual pet companion with layered canvas rendering, interactive wardrobe, daily streaks, and desktop overlay window.
 - **Whisper Server Resolution**: Auto-locates `whisper_server.py` from executable root or resources bundle directory.
 - **Standalone Setup EXE Generation**: Compiled release installer located at `src-tauri/target/release/bundle/nsis/AetherVoice_0.2.0_x64-setup.exe`.
 

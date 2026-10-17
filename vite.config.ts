@@ -28,6 +28,7 @@ export default defineConfig(() => ({
       input: {
         main: resolve(import.meta.dirname, "index.html"),
         settings: resolve(import.meta.dirname, "settings.html"),
+        companion: resolve(import.meta.dirname, "companion.html"),
       },
     },
   },

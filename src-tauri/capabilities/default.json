@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for AetherVoice windows",
-  "windows": ["main", "settings"],
+  "windows": ["main", "settings", "companion"],
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",

@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { listen, emit } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 const appWindow = getCurrentWindow();
@@ -63,6 +63,7 @@ function startVisualizer() {
       }
 
       const boost = Math.min(1.0, Math.pow(rawLevel * 4.0, 0.7));
+      emit("audio-amplitude", boost).catch(() => {});
 
       waveformBars.forEach((bar, idx) => {
         if (!bar) return;
@@ -137,6 +138,9 @@ function recordSessionStats(text: string, durationSec: number, targetApp: string
     invoke("save_user_stats", { stats }).catch((e) => {
       console.warn("Backend save_user_stats warning:", e);
     });
+
+    // Notify companion overlay of completed dictation and word count
+    emit("dictation-complete", { words, text: trimmed }).catch(() => {});
 
     // Dispatch custom event in case settings window is open in same webview context
     window.dispatchEvent(new Event("aethervoice-stats-updated"));

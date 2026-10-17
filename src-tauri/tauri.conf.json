@@ -34,10 +34,23 @@
         "width": 960,
         "height": 650,
         "minWidth": 800,
-        "minHeight": 550,
         "decorations": true,
         "center": true,
         "visible": false
+      },
+      {
+        "label": "companion",
+        "title": "Aether Core",
+        "url": "/companion.html",
+        "width": 180,
+        "height": 180,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "resizable": false,
+        "shadow": false,
+        "skipTaskbar": true,
+        "visible": true
       }
     ],
     "security": {
