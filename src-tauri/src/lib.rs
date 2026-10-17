@@ -123,11 +123,7 @@ fn get_user_config(state: State<'_, AppState>, app: AppHandle) -> Result<AppConf
     let path = get_config_path(&app)?;
     if path.exists() {
         if let Ok(data) = std::fs::read_to_string(&path) {
-            if let Ok(mut loaded) = serde_json::from_str::<AppConfig>(&data) {
-                if loaded.custom_instructions.contains("software architect") {
-                    loaded.custom_instructions = AppConfig::default().custom_instructions;
-                    let _ = std::fs::write(&path, serde_json::to_string_pretty(&loaded).unwrap_or_default());
-                }
+            if let Ok(loaded) = serde_json::from_str::<AppConfig>(&data) {
                 let mut lock = state.config.write().map_err(|e| e.to_string())?;
                 *lock = loaded.clone();
                 return Ok(loaded);
@@ -971,11 +967,7 @@ pub fn run() {
             if let Ok(config_path) = get_config_path(&handle) {
                 if config_path.exists() {
                     if let Ok(data) = std::fs::read_to_string(&config_path) {
-                        if let Ok(mut loaded) = serde_json::from_str::<AppConfig>(&data) {
-                            if loaded.custom_instructions.contains("software architect") {
-                                loaded.custom_instructions = AppConfig::default().custom_instructions;
-                                let _ = std::fs::write(&config_path, serde_json::to_string_pretty(&loaded).unwrap_or_default());
-                            }
+                        if let Ok(loaded) = serde_json::from_str::<AppConfig>(&data) {
                             if let Some(state) = handle.try_state::<AppState>() {
                                 if let Ok(mut lock) = state.config.write() {
                                     *lock = loaded;
