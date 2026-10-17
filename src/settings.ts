@@ -111,12 +111,20 @@ const CATALOG_MODELS: ModelCatalogItem[] = [
   }
 ];
 
+interface ModelVerificationSummary {
+  confirmed_models: string[];
+  verified_models: string[];
+  active_model: string;
+  ollama_available: boolean;
+}
+
 interface AppConfig {
   custom_instructions: string;
   hotkey: string;
   activation_mode: string;
   model_id: string;
   llm_model?: string;
+  confirmed_models?: string[];
   vad_enabled: boolean;
   strip_fillers: boolean;
   spoken_punctuation: boolean;
@@ -146,6 +154,8 @@ let currentConfig: AppConfig = {
   hotkey: "AltRight",
   activation_mode: "push-to-talk",
   model_id: "large-v3-turbo-q5_0",
+  llm_model: "none",
+  confirmed_models: [],
   vad_enabled: true,
   strip_fillers: true,
   spoken_punctuation: true,
@@ -271,31 +281,35 @@ function switchTab(tabId: string) {
   }
 }
 
-// Check installed Ollama models and render the Models Tab & Dropdown
-async function fetchInstalledModels(): Promise<string[]> {
+// Check and manually verify installed models against the user's recorded configuration
+async function fetchAndVerifyModels(): Promise<string[]> {
   try {
-    const models = await invoke<string[]>("get_installed_llm_models");
-    installedModelIds = models || [];
+    const summary = await invoke<ModelVerificationSummary>("verify_and_sync_models");
+    currentConfig.confirmed_models = summary.confirmed_models || [];
+    installedModelIds = summary.verified_models || [];
+    if (summary.active_model) {
+      currentConfig.llm_model = summary.active_model;
+    }
     return installedModelIds;
   } catch (err) {
-    console.debug("Failed to query Ollama models:", err);
+    console.debug("Failed to verify models with backend:", err);
     installedModelIds = [];
     return [];
   }
 }
 
 // Dynamically populate the "Local Reasoning & Instructions Model" dropdown in Settings
-// ONLY includes models currently installed on the machine (+ Disabled)
+// STRICTLY includes ONLY models explicitly confirmed by the user AND verified on disk (+ Disabled)
 function syncLLMModelDropdown() {
   if (!llmModelSelect) return;
 
-  const previousValue = currentConfig.llm_model || llmModelSelect.value || "gemma2:2b";
+  const previousValue = currentConfig.llm_model || "none";
   llmModelSelect.innerHTML = "";
 
-  // Filter available models that are installed on disk
+  // Filter available models that are explicitly confirmed and verified
   const matchedInstalled: { id: string; name: string }[] = [];
 
-  // Match only official application catalog items that are locally installed
+  // Match only official application catalog items that are locally verified
   CATALOG_MODELS.forEach((cat) => {
     const isInstalled = installedModelIds.some((installedName) => {
       const lower = installedName.toLowerCase();
@@ -323,7 +337,7 @@ function syncLLMModelDropdown() {
   disabledOpt.textContent = "Disabled (Verbatim Dictation Only)";
   llmModelSelect.appendChild(disabledOpt);
 
-  // Preserve previous selection if still available, or pick the first available installed model
+  // Preserve previous selection if still available, or pick the first available verified model
   const options = Array.from(llmModelSelect.options).map((o) => o.value);
   if (options.includes(previousValue)) {
     llmModelSelect.value = previousValue;
@@ -340,7 +354,7 @@ function syncLLMModelDropdown() {
 async function loadAndRenderModels() {
   if (!modelsList) return;
 
-  await fetchInstalledModels();
+  await fetchAndVerifyModels();
   syncLLMModelDropdown();
 
   modelsList.innerHTML = "";
@@ -555,6 +569,7 @@ async function startDeletionProcess(model: ModelCatalogItem) {
 
   try {
     await invoke("delete_llm_model", { model: model.id });
+    await invoke("unconfirm_model", { model: model.id });
 
     if (activeDeleteCancelled) {
       if (activeDeleteInterval) clearInterval(activeDeleteInterval);
@@ -635,6 +650,9 @@ async function openDownloadModal(model: ModelCatalogItem) {
       await loadAndRenderModels();
       return;
     }
+
+    // Explicitly confirm model installation and sync configuration
+    await invoke("confirm_model_installed", { model: model.id });
 
     if (modalDownloadBar) modalDownloadBar.style.width = "100%";
     if (modalDownloadPercentText) modalDownloadPercentText.textContent = "100%";
@@ -1022,7 +1040,16 @@ async function loadConfig() {
     }
   }
 
-  await fetchInstalledModels();
+  try {
+    const backendStats = await invoke<any>("get_user_stats");
+    if (backendStats && typeof backendStats.words === "number") {
+      localStorage.setItem("aethervoice_stats", JSON.stringify(backendStats));
+    }
+  } catch (err) {
+    console.debug("Backend stats query warning:", err);
+  }
+
+  await fetchAndVerifyModels();
   syncLLMModelDropdown();
 
   // Populate UI
@@ -1099,6 +1126,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 
     await listen<{ model: string }>("model-pull-completed", async (event) => {
       downloadingModels.delete(event.payload.model);
+      await invoke("confirm_model_installed", { model: event.payload.model });
       if (activeDownloadModelId === event.payload.model) {
         if (modalDownloadBar) modalDownloadBar.style.width = "100%";
         if (modalDownloadPercentText) modalDownloadPercentText.textContent = "100%";

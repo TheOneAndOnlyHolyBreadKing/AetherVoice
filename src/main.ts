@@ -133,6 +133,11 @@ function recordSessionStats(text: string, durationSec: number, targetApp: string
 
     localStorage.setItem("aethervoice_stats", JSON.stringify(stats));
 
+    // Also persist cumulative stats directly to backend disk storage
+    invoke("save_user_stats", { stats }).catch((e) => {
+      console.warn("Backend save_user_stats warning:", e);
+    });
+
     // Dispatch custom event in case settings window is open in same webview context
     window.dispatchEvent(new Event("aethervoice-stats-updated"));
   } catch (err) {
@@ -269,6 +274,25 @@ window.addEventListener("DOMContentLoaded", async () => {
       }
     }
   });
+
+  // Load persistent stats and history from backend
+  try {
+    const backendStats = await invoke<any>("get_user_stats");
+    if (backendStats && typeof backendStats.words === "number") {
+      localStorage.setItem("aethervoice_stats", JSON.stringify(backendStats));
+    }
+  } catch (e) {
+    console.debug("Backend stats load error:", e);
+  }
+
+  try {
+    const backendHistory = await invoke<any[]>("get_dictation_history");
+    if (Array.isArray(backendHistory) && backendHistory.length > 0) {
+      localStorage.setItem("aethervoice_history", JSON.stringify(backendHistory));
+    }
+  } catch (e) {
+    console.debug("Backend history load error:", e);
+  }
 
   // Provision model on first launch
   checkAndProvisionModel();

@@ -20,6 +20,58 @@ pub struct AppState {
     pub config: Arc<RwLock<AppConfig>>,
 }
 
+fn get_persistent_backup_dir() -> Result<std::path::PathBuf, String> {
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        let dir = std::path::PathBuf::from(appdata).join("AetherVoice");
+        if !dir.exists() {
+            let _ = std::fs::create_dir_all(&dir);
+        }
+        return Ok(dir);
+    }
+    if let Ok(userprofile) = std::env::var("USERPROFILE") {
+        let dir = std::path::PathBuf::from(userprofile).join(".aethervoice");
+        if !dir.exists() {
+            let _ = std::fs::create_dir_all(&dir);
+        }
+        return Ok(dir);
+    }
+    Err("Failed to resolve persistent AppData/UserProfile directory".to_string())
+}
+
+fn mirror_to_persistent_backup(filename: &str, content: &str) {
+    if let Ok(backup_dir) = get_persistent_backup_dir() {
+        let backup_file = backup_dir.join(filename);
+        let _ = std::fs::write(backup_file, content);
+    }
+}
+
+pub fn init_persistent_storage(app: &AppHandle) {
+    if let Ok(primary_dir) = app.path().app_data_dir() {
+        let _ = std::fs::create_dir_all(&primary_dir);
+        if let Ok(backup_dir) = get_persistent_backup_dir() {
+            let files = [
+                "aethervoice_config.json",
+                "aethervoice_history.json",
+                "aethervoice_stats.json",
+            ];
+            for file_name in &files {
+                let primary_file = primary_dir.join(file_name);
+                let backup_file = backup_dir.join(file_name);
+
+                if !primary_file.exists() && backup_file.exists() {
+                    println!(
+                        "[AetherVoice] Restoring {} from persistent storage: {:?}",
+                        file_name, backup_file
+                    );
+                    let _ = std::fs::copy(&backup_file, &primary_file);
+                } else if primary_file.exists() && !backup_file.exists() {
+                    let _ = std::fs::copy(&primary_file, &backup_file);
+                }
+            }
+        }
+    }
+}
+
 fn get_config_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
     let app_dir = app
         .path()
@@ -28,7 +80,42 @@ fn get_config_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
     if !app_dir.exists() {
         let _ = std::fs::create_dir_all(&app_dir);
     }
-    Ok(app_dir.join("aethervoice_config.json"))
+    let primary = app_dir.join("aethervoice_config.json");
+    if !primary.exists() {
+        if let Ok(backup_dir) = get_persistent_backup_dir() {
+            let backup = backup_dir.join("aethervoice_config.json");
+            if backup.exists() {
+                let _ = std::fs::copy(&backup, &primary);
+            }
+        }
+    }
+    Ok(primary)
+}
+
+fn save_user_config_internal(
+    app: &AppHandle,
+    state: &AppState,
+    config: AppConfig,
+) -> Result<(), String> {
+    let path = get_config_path(app)?;
+    let serialized = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
+    std::fs::write(&path, &serialized).map_err(|e| e.to_string())?;
+    mirror_to_persistent_backup("aethervoice_config.json", &serialized);
+
+    let device_changed = {
+        let lock = state.config.read().map_err(|e| e.to_string())?;
+        lock.audio_device != config.audio_device
+    };
+
+    if device_changed {
+        if let Ok(mut rec_lock) = state.recorder.lock() {
+            *rec_lock = None;
+        }
+    }
+
+    let mut lock = state.config.write().map_err(|e| e.to_string())?;
+    *lock = config;
+    Ok(())
 }
 
 #[tauri::command]
@@ -57,24 +144,7 @@ fn save_user_config(
     app: AppHandle,
     config: AppConfig,
 ) -> Result<(), String> {
-    let path = get_config_path(&app)?;
-    let serialized = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
-    std::fs::write(&path, serialized).map_err(|e| e.to_string())?;
-
-    let device_changed = {
-        let lock = state.config.read().map_err(|e| e.to_string())?;
-        lock.audio_device != config.audio_device
-    };
-
-    if device_changed {
-        if let Ok(mut rec_lock) = state.recorder.lock() {
-            *rec_lock = None;
-        }
-    }
-
-    let mut lock = state.config.write().map_err(|e| e.to_string())?;
-    *lock = config;
-    Ok(())
+    save_user_config_internal(&app, &state, config)
 }
 
 fn get_history_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
@@ -85,7 +155,16 @@ fn get_history_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
     if !app_dir.exists() {
         let _ = std::fs::create_dir_all(&app_dir);
     }
-    Ok(app_dir.join("aethervoice_history.json"))
+    let primary = app_dir.join("aethervoice_history.json");
+    if !primary.exists() {
+        if let Ok(backup_dir) = get_persistent_backup_dir() {
+            let backup = backup_dir.join("aethervoice_history.json");
+            if backup.exists() {
+                let _ = std::fs::copy(&backup, &primary);
+            }
+        }
+    }
+    Ok(primary)
 }
 
 #[tauri::command]
@@ -109,9 +188,236 @@ fn save_dictation_history(app: AppHandle, mut history: Vec<HistoryItem>) -> Resu
     }
     let path = get_history_path(&app)?;
     let serialized = serde_json::to_string_pretty(&history).map_err(|e| e.to_string())?;
-    std::fs::write(&path, serialized).map_err(|e| e.to_string())?;
+    std::fs::write(&path, &serialized).map_err(|e| e.to_string())?;
+    mirror_to_persistent_backup("aethervoice_history.json", &serialized);
     let _ = app.emit("dictation-history-updated", ());
     Ok(())
+}
+
+fn get_stats_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    let app_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app_data_dir: {}", e))?;
+    if !app_dir.exists() {
+        let _ = std::fs::create_dir_all(&app_dir);
+    }
+    let primary = app_dir.join("aethervoice_stats.json");
+    if !primary.exists() {
+        if let Ok(backup_dir) = get_persistent_backup_dir() {
+            let backup = backup_dir.join("aethervoice_stats.json");
+            if backup.exists() {
+                let _ = std::fs::copy(&backup, &primary);
+            }
+        }
+    }
+    Ok(primary)
+}
+
+#[tauri::command]
+fn get_user_stats(app: AppHandle) -> Result<serde_json::Value, String> {
+    let path = get_stats_path(&app)?;
+    if path.exists() {
+        if let Ok(data) = std::fs::read_to_string(&path) {
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&data) {
+                return Ok(val);
+            }
+        }
+    }
+    Ok(serde_json::json!({
+        "words": 0,
+        "secondsSaved": 0,
+        "sessions": 0,
+        "totalDuration": 0,
+        "appUsage": {}
+    }))
+}
+
+#[tauri::command]
+fn save_user_stats(app: AppHandle, stats: serde_json::Value) -> Result<(), String> {
+    let path = get_stats_path(&app)?;
+    let serialized = serde_json::to_string_pretty(&stats).map_err(|e| e.to_string())?;
+    std::fs::write(&path, &serialized).map_err(|e| e.to_string())?;
+    mirror_to_persistent_backup("aethervoice_stats.json", &serialized);
+    Ok(())
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ModelVerificationSummary {
+    pub confirmed_models: Vec<String>,
+    pub verified_models: Vec<String>,
+    pub active_model: String,
+    pub ollama_available: bool,
+}
+
+pub const CATALOG_MODEL_IDS: &[&str] = &[
+    "gemma2:2b",
+    "llama3.2:1b",
+    "llama3.2:3b",
+    "qwen2.5:0.5b",
+    "qwen2.5:1.5b",
+    "qwen2.5:3b",
+    "deepseek-r1:1.5b",
+    "mistral:7b",
+];
+
+pub async fn verify_and_sync_models_internal(
+    app: &AppHandle,
+    state: &AppState,
+) -> Result<ModelVerificationSummary, String> {
+    let mut config = {
+        let lock = state.config.read().map_err(|e| e.to_string())?;
+        lock.clone()
+    };
+
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .timeout(std::time::Duration::from_millis(3000))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let ollama_res = client.get("http://127.0.0.1:11434/api/tags").send().await;
+
+    let mut verified_models = Vec::new();
+    let mut changed = false;
+
+    let is_model_match = |tag: &str, cat_id: &str| -> bool {
+        let t = tag.to_lowercase();
+        let c = cat_id.to_lowercase();
+        t == c
+            || t == format!("{}:latest", c)
+            || t.trim_end_matches(":latest") == c
+            || t.starts_with(&format!("{}:", c))
+            || t.ends_with(&format!("/{}", c))
+            || t.ends_with(&format!("/{}:latest", c))
+    };
+
+    let ollama_available = match ollama_res {
+        Ok(resp) if resp.status().is_success() => {
+            if let Ok(val) = resp.json::<serde_json::Value>().await {
+                let mut installed_tags: Vec<String> = Vec::new();
+                if let Some(models) = val["models"].as_array() {
+                    for m in models {
+                        if let Some(name) = m["name"].as_str() {
+                            installed_tags.push(name.to_lowercase());
+                        }
+                    }
+                }
+                println!("[AetherVoice] Ollama tags reported: {:?}", installed_tags);
+
+                // Auto-detect and verify all models on disk matching our official catalog
+                for &cat_id in CATALOG_MODEL_IDS {
+                    let is_present = installed_tags.iter().any(|tag| is_model_match(tag, cat_id));
+                    if is_present {
+                        if !verified_models.contains(&cat_id.to_string()) {
+                            verified_models.push(cat_id.to_string());
+                        }
+                        if !config.confirmed_models.contains(&cat_id.to_string()) {
+                            println!("[AetherVoice] Discovered matching catalog model '{}' in Ollama. Recording as confirmed.", cat_id);
+                            config.confirmed_models.push(cat_id.to_string());
+                            changed = true;
+                        }
+                    } else if config.confirmed_models.contains(&cat_id.to_string()) {
+                        // User uninstalled model outside AetherVoice: un-confirm it
+                        println!("[AetherVoice] Model '{}' no longer detected in Ollama. Un-confirming.", cat_id);
+                        config.confirmed_models.retain(|m| m != cat_id);
+                        changed = true;
+                    }
+                }
+                true
+            } else {
+                false
+            }
+        }
+        _ => false,
+    };
+
+    // If active model is "none" or empty, and we have verified catalog models:
+    if (config.llm_model == "none" || config.llm_model.is_empty()) && !verified_models.is_empty() {
+        if verified_models.contains(&"gemma2:2b".to_string()) {
+            config.llm_model = "gemma2:2b".to_string();
+        } else {
+            config.llm_model = verified_models[0].clone();
+        }
+        changed = true;
+    } else if config.llm_model != "none" && !config.llm_model.is_empty() {
+        // If active model is set but not verified on disk:
+        if ollama_available && !verified_models.contains(&config.llm_model) {
+            println!(
+                "[AetherVoice] Active model '{}' is not present in local Ollama. Falling back.",
+                config.llm_model
+            );
+            if let Some(first) = verified_models.first() {
+                config.llm_model = first.clone();
+            } else {
+                config.llm_model = "none".to_string();
+            }
+            changed = true;
+        }
+    }
+
+    if changed {
+        let _ = save_user_config_internal(app, state, config.clone());
+    }
+
+    Ok(ModelVerificationSummary {
+        confirmed_models: config.confirmed_models.clone(),
+        verified_models,
+        active_model: config.llm_model.clone(),
+        ollama_available,
+    })
+}
+
+#[tauri::command]
+async fn verify_and_sync_models(
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<ModelVerificationSummary, String> {
+    verify_and_sync_models_internal(&app, &state).await
+}
+
+#[tauri::command]
+async fn confirm_model_installed(
+    state: State<'_, AppState>,
+    app: AppHandle,
+    model: String,
+) -> Result<ModelVerificationSummary, String> {
+    let mut config = {
+        let lock = state.config.read().map_err(|e| e.to_string())?;
+        lock.clone()
+    };
+
+    if !config.confirmed_models.contains(&model) {
+        config.confirmed_models.push(model.clone());
+    }
+    if config.llm_model == "none" || config.llm_model.is_empty() {
+        config.llm_model = model;
+    }
+    save_user_config_internal(&app, &state, config)?;
+    verify_and_sync_models_internal(&app, &state).await
+}
+
+#[tauri::command]
+async fn unconfirm_model(
+    state: State<'_, AppState>,
+    app: AppHandle,
+    model: String,
+) -> Result<ModelVerificationSummary, String> {
+    let mut config = {
+        let lock = state.config.read().map_err(|e| e.to_string())?;
+        lock.clone()
+    };
+
+    config.confirmed_models.retain(|m| m != &model);
+    if config.llm_model == model {
+        config.llm_model = config
+            .confirmed_models
+            .first()
+            .cloned()
+            .unwrap_or_else(|| "none".to_string());
+    }
+    save_user_config_internal(&app, &state, config)?;
+    verify_and_sync_models_internal(&app, &state).await
 }
 
 #[tauri::command]
@@ -636,6 +942,9 @@ pub fn run() {
             get_installed_llm_models,
             pull_llm_model,
             delete_llm_model,
+            verify_and_sync_models,
+            confirm_model_installed,
+            unconfirm_model,
             start_dictation,
             stop_dictation,
             test_inject,
@@ -643,6 +952,8 @@ pub fn run() {
             open_settings_window,
             get_user_config,
             save_user_config,
+            get_user_stats,
+            save_user_stats,
             get_audio_devices,
             start_dragging,
             get_audio_level,
@@ -652,6 +963,9 @@ pub fn run() {
         ])
         .setup(|app| {
             let handle = app.handle().clone();
+
+            // Initialize persistent storage (restore any wiped data from persistent backup)
+            init_persistent_storage(&handle);
 
             // Load saved user config from disk on startup
             if let Ok(config_path) = get_config_path(&handle) {
@@ -672,6 +986,27 @@ pub fn run() {
                     }
                 }
             }
+
+            // Perform manual model verification on startup to guarantee consistency
+            let handle_verify = handle.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Some(state_ref) = handle_verify.try_state::<AppState>() {
+                    println!("[AetherVoice] Verifying installed models against user's recorded configuration...");
+                    match verify_and_sync_models_internal(&handle_verify, &state_ref).await {
+                        Ok(summary) => {
+                            println!(
+                                "[AetherVoice] Startup model verification complete: {} confirmed, {} verified on disk (Ollama online: {})",
+                                summary.confirmed_models.len(),
+                                summary.verified_models.len(),
+                                summary.ollama_available
+                            );
+                        }
+                        Err(e) => {
+                            eprintln!("[AetherVoice] Startup model verification error: {}", e);
+                        }
+                    }
+                }
+            });
 
             #[cfg(windows)]
             spawn_global_hotkey_listener(handle);

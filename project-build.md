@@ -42,31 +42,45 @@ graph TD
 - [x] **Phase 5: Automated Prerequisites & Setup Packaging**
   - NSIS custom installer hook (`installer_hooks.nsh`) dynamically detecting and provisioning Python, Whisper, PyTorch, audio dependencies, and Ollama.
   - Bundling and path resolution for `whisper_server.py` across development and production install directories.
-- [x] **Phase 6: GitHub Release Distribution**
+- [x] **Phase 6: Persistent User Data & Strict Model Verification System**
+  - Double-layer data persistence: Primary store (`%APPDATA%\com.aethervoice.app`) with persistent mirror (`%APPDATA%\AetherVoice`) impervious to installer wipes.
+  - Interactive NSIS installer prompt (`NSIS_HOOK_PREINSTALL`): Asks user whether to preserve existing settings, dictation history, and confirmed models (defaults to preserving all data).
+  - NSIS restore hooks (`NSIS_HOOK_POSTINSTALL`): Automatically restores missing configuration, history, and stats if fresh install directory is created.
+  - Strict Startup Model Verification (`verify_and_sync_models`): Cross-references local Ollama physical tags (`/api/tags`) against `CATALOG_MODEL_IDS`.
+  - Automatic Catalog Detection: Automatically identifies any installed models on the user's machine matching the official catalog (e.g., `gemma2:2b`) and marks them as confirmed/installed.
+  - Interface Whitelist Invariant: Strictly filters out random/unverified non-catalog models on the system; only verified catalog models appear in the catalog and settings dropdown.
+  - Full Stats Disk Persistence (`save_user_stats`, `get_user_stats`): Bridges stats from ephemeral browser `localStorage` to persistent disk JSON.
+- [x] **Phase 7: User Acceptance Testing & GitHub Release Distribution**
+  - Upgraded release target to `v0.2.0`.
+  - Multi-layer persistence and strict model verification verified and confirmed.
 
 ---
 
 ## 5. Verified Working Capabilities (Proven State)
 - **Single-Instance Enforcement**: Verified via Win32 `CreateMutexW` and `GetLastError() == ERROR_ALREADY_EXISTS`. Triggers native modal alert `MessageBoxW` and clean shutdown when launched multiple times.
-- **Automated Setup Prerequisites**: Integrated into NSIS setup installer bundle (`AetherVoice_0.1.0_x64-setup.exe`), inspecting/installing Python, PyTorch, Whisper, and Ollama with a visible progress window during installation.
+- **Automated Setup Prerequisites**: Integrated into NSIS setup installer bundle (`AetherVoice_0.2.0_x64-setup.exe`), inspecting/installing Python, PyTorch, Whisper, and Ollama with a visible progress window during installation.
 - **In-App Self-Healing Whisper Engine**: If a user runs without prerequisites pre-installed, AetherVoice detects the missing `whisper` module, informs the user with a modal notice, and automatically runs `pip install` in the background with `py` and `python` launcher fallbacks.
+- **Persistent Multi-Layer User Storage**: Config (`aethervoice_config.json`), history (`aethervoice_history.json`), and stats (`aethervoice_stats.json`) mirrored to `%APPDATA%\AetherVoice`. Startup sequence self-heals by restoring from mirror if primary directory is wiped.
+- **Strict Startup Model Verification**: Verified through `verify_and_sync_models_internal`. Catalog models present on the system are auto-detected and confirmed; uncataloged/random models are discarded.
 - **Whisper Server Resolution**: Auto-locates `whisper_server.py` from executable root or resources bundle directory.
-- **Standalone Setup EXE Generation**: Compiled release installer located at `src-tauri/target/release/bundle/nsis/AetherVoice_0.1.0_x64-setup.exe`.
+- **Standalone Setup EXE Generation**: Compiled release installer located at `src-tauri/target/release/bundle/nsis/AetherVoice_0.2.0_x64-setup.exe`.
 
 ---
 
 ## 6. Load-Bearing Decisions & Gotchas Resolved
+- **Tauri NSIS Hook Macros**: Tauri v2 NSIS requires `NSIS_HOOK_PREINSTALL`, `NSIS_HOOK_POSTINSTALL`, `NSIS_HOOK_PREUNINSTALL`, and `NSIS_HOOK_POSTUNINSTALL`. Legacy electron-builder macro names like `customInstall` are ignored by Tauri's NSIS template.
+- **Tauri Bundle Directory Deletion**: Tauri's uninstaller targets `$APPDATA\com.aethervoice.app` and `$LOCALAPPDATA\com.aethervoice.app`. Mirroring persistent files to `%APPDATA%\AetherVoice` guarantees zero data loss on reinstallations or upgrades unless user explicitly requests data deletion.
+- **Safe LLM Fallback Invariant**: When no confirmed model is verified, `llm_model` safely defaults to `"none"` (Verbatim dictation) rather than auto-selecting random local Ollama models.
 - **Windows-sys 0.59.0 Feature Requirements**: `CreateMutexW` requires the `Win32_Security` and `Win32_Foundation` features in `Cargo.toml`.
 - **MessageBoxW Null Mutability**: Win32 `MessageBoxW` expects a mutable pointer for `HWND` (`core::ptr::null_mut()`).
 - **Visible NSIS Prerequisite Execution**: Replaced silent background execution in NSIS with `ExecWait` console execution so users see active pip/winget progress rather than failing silently.
-- **Python / Py Launcher Fallback**: Added fallback checking for both `python` and `py` commands on Windows to support all Python installation variations.
 
 ---
 
 ## 7. Immediate Next Steps (Laptop / Desktop Crossover)
-1. Commit and push updated code to GitHub (`main` branch).
-2. Upload the freshly built `AetherVoice_0.1.0_x64-setup.exe` to GitHub Releases.
-3. Validate download and run installer on secondary/target workstation.
+1. Build production release installer `AetherVoice_0.2.0_x64-setup.exe`.
+2. Commit and push changes to `main` branch.
+3. Publish release tag `v0.2.0` and attach setup bundle on GitHub Releases.
 
 ---
 
@@ -74,4 +88,4 @@ graph TD
 - Frontend build: `npm run build`
 - Rust check: `cargo check` (in `src-tauri`)
 - Bundle NSIS installer: `npx tauri build --bundles nsis`
-- Output installer: `src-tauri/target/release/bundle/nsis/AetherVoice_0.1.0_x64-setup.exe`
+- Output installer: `src-tauri/target/release/bundle/nsis/AetherVoice_0.2.0_x64-setup.exe`

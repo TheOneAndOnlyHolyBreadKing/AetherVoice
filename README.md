@@ -63,4 +63,4 @@ npm run build
 
 ## 📦 Releases
 
-Download the latest standalone setup installer (`AetherVoice_0.1.0_x64-setup.exe`) from the [GitHub Releases](https://github.com/TheOneAndOnlyHolyBreadKing/AetherVoice/releases) page.
+Download the latest standalone setup installer (`AetherVoice_0.2.0_x64-setup.exe`) from the [GitHub Releases](https://github.com/TheOneAndOnlyHolyBreadKing/AetherVoice/releases) page.

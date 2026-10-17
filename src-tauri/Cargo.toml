@@ -1,6 +1,6 @@
 [package]
 name = "aethervoice"
-version = "0.1.0"
+version = "0.2.0"
 description = "AetherVoice - Local-first Zero-Cloud Speech-to-Text Dictation"
 authors = ["AetherVoice Team"]
 edition = "2021"

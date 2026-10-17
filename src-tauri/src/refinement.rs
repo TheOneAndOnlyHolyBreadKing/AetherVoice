@@ -28,6 +28,8 @@ pub struct AppConfig {
     pub model_id: String,
     #[serde(default = "default_llm_model")]
     pub llm_model: String,
+    #[serde(default = "default_confirmed_models")]
+    pub confirmed_models: Vec<String>,
     pub audio_device: String,
     pub mic_gain: f32,
     pub noise_suppression: bool,
@@ -64,7 +66,11 @@ fn default_hands_free_hotkey() -> String {
 }
 
 fn default_llm_model() -> String {
-    "gemma2:2b".to_string()
+    "none".to_string()
+}
+
+fn default_confirmed_models() -> Vec<String> {
+    Vec::new()
 }
 
 impl Default for AppConfig {
@@ -82,6 +88,7 @@ Act as an intelligent, high-fidelity voice dictation assistant. Transform spoken
             activation_mode: "push-to-talk".to_string(),
             model_id: "large-v3-turbo-q5_0".to_string(),
             llm_model: default_llm_model(),
+            confirmed_models: default_confirmed_models(),
             audio_device: "Default".to_string(),
             mic_gain: 1.0,
             noise_suppression: true,
